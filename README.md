@@ -96,3 +96,65 @@ Nest is an MIT-licensed open source project. It can grow thanks to the sponsors 
 ## License
 
 Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+```
+backend
+├─ .prettierrc
+├─ docker-compose.yml
+├─ Dockerfile
+├─ eslint.config.mjs
+├─ nest-cli.json
+├─ package-lock.json
+├─ package.json
+├─ README.md
+├─ src
+│  ├─ app.controller.spec.ts
+│  ├─ app.controller.ts
+│  ├─ app.module.ts
+│  ├─ app.service.ts
+│  ├─ common
+│  ├─ config
+│  │  └─ configuration.ts
+│  ├─ main.ts
+│  ├─ modules
+│  │  ├─ auth
+│  │  │  ├─ auth.controller.ts
+│  │  │  ├─ auth.module.ts
+│  │  │  ├─ auth.service.ts
+│  │  │  ├─ decorators
+│  │  │  │  ├─ permissions.decorator.ts
+│  │  │  │  └─ roles.decorators.ts
+│  │  │  ├─ dto
+│  │  │  │  ├─ login.dto.ts
+│  │  │  │  └─ register.dto.ts
+│  │  │  ├─ entities
+│  │  │  │  ├─ permission.entity.ts
+│  │  │  │  ├─ refresh-token.entity.ts
+│  │  │  │  ├─ role-permission.entity.ts
+│  │  │  │  ├─ role.entity.ts
+│  │  │  │  ├─ user-role.entity.ts
+│  │  │  │  └─ user.entity.ts
+│  │  │  ├─ guards
+│  │  │  │  ├─ jwt-auth.guard.ts
+│  │  │  │  ├─ permission.guard.ts
+│  │  │  │  └─ role.guard.ts
+│  │  │  └─ strategies
+│  │  │     └─ jwt.strategy.ts
+│  │  ├─ database
+│  │  │  ├─ database.module.ts
+│  │  │  └─ database.service.ts
+│  │  ├─ packages
+│  │  │  ├─ packages.controller.ts
+│  │  │  ├─ packages.module.ts
+│  │  │  └─ packages.service.ts
+│  │  └─ users
+│  │     ├─ users.module.ts
+│  │     ├─ users.service.ts
+│  │     └─ usres.controller.ts
+│  └─ shared
+├─ test
+│  ├─ app.e2e-spec.ts
+│  └─ jest-e2e.json
+├─ tsconfig.build.json
+└─ tsconfig.json
+
+```
