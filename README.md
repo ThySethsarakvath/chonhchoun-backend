@@ -96,6 +96,7 @@ Nest is an MIT-licensed open source project. It can grow thanks to the sponsors 
 ## License
 
 Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+
 ```
 backend
 ├─ .prettierrc
@@ -112,6 +113,8 @@ backend
 │  ├─ app.module.ts
 │  ├─ app.service.ts
 │  ├─ common
+│  │  └─ enum
+│  │     └─ role.enum.ts
 │  ├─ config
 │  │  └─ configuration.ts
 │  ├─ main.ts
@@ -121,23 +124,19 @@ backend
 │  │  │  ├─ auth.module.ts
 │  │  │  ├─ auth.service.ts
 │  │  │  ├─ decorators
-│  │  │  │  ├─ permissions.decorator.ts
+│  │  │  │  ├─ current-user.decorator.ts
 │  │  │  │  └─ roles.decorators.ts
 │  │  │  ├─ dto
 │  │  │  │  ├─ login.dto.ts
 │  │  │  │  └─ register.dto.ts
-│  │  │  ├─ entities
-│  │  │  │  ├─ permission.entity.ts
-│  │  │  │  ├─ refresh-token.entity.ts
-│  │  │  │  ├─ role-permission.entity.ts
-│  │  │  │  ├─ role.entity.ts
-│  │  │  │  ├─ user-role.entity.ts
-│  │  │  │  └─ user.entity.ts
 │  │  │  ├─ guards
 │  │  │  │  ├─ jwt-auth.guard.ts
-│  │  │  │  ├─ permission.guard.ts
 │  │  │  │  └─ role.guard.ts
+│  │  │  ├─ schemas
+│  │  │  │  ├─ refresh-token.schema.ts
+│  │  │  │  └─ user.schema.ts
 │  │  │  └─ strategies
+│  │  │     ├─ jwt-refresh.strategy.ts
 │  │  │     └─ jwt.strategy.ts
 │  │  ├─ database
 │  │  │  ├─ database.module.ts
@@ -147,9 +146,9 @@ backend
 │  │  │  ├─ packages.module.ts
 │  │  │  └─ packages.service.ts
 │  │  └─ users
+│  │     ├─ users.controller.ts
 │  │     ├─ users.module.ts
-│  │     ├─ users.service.ts
-│  │     └─ usres.controller.ts
+│  │     └─ users.service.ts
 │  └─ shared
 ├─ test
 │  ├─ app.e2e-spec.ts
