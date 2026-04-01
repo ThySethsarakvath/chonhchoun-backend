@@ -5,6 +5,7 @@ import { AppService } from './app.service';
 import { DatabaseModule } from './modules/database/database.module';
 // import { AuthModule } from './modules/auth/auth.module';
 // import { PackagesModule } from './modules/packages/packages.module';
+import { AgenciesModule } from './modules/agencies/agencies.module';
 import configuration from './config/configuration';
 
 @Module({
@@ -18,6 +19,8 @@ import configuration from './config/configuration';
 
     // ── 2. Database (MongoDB Atlas) ──────────────────────────
     DatabaseModule,
+
+    AgenciesModule,
 
     // ── 3. Feature modules ───────────────────────────────────
     // AuthModule,
