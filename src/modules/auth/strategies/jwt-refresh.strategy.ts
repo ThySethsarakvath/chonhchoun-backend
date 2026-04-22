@@ -3,7 +3,6 @@ import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { Request } from 'express';
-import { JwtPayload } from './jwt.strategy';
 
 @Injectable()
 export class JwtRefreshStrategy extends PassportStrategy(Strategy, 'jwt-refresh') {
@@ -12,15 +11,24 @@ export class JwtRefreshStrategy extends PassportStrategy(Strategy, 'jwt-refresh'
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
       secretOrKey: configService.get<string>('jwt.refreshSecret')!,
-      passReqToCallback: true, // we need the raw token to verify against DB
+      passReqToCallback: true,
     });
   }
 
-  async validate(req: Request, payload: JwtPayload) {
+  async validate(req: Request, payload: any) {
     const authHeader = req.headers['authorization'];
     if (!authHeader) throw new UnauthorizedException();
 
     const refreshToken = authHeader.replace('Bearer ', '').trim();
-    return { ...payload, refreshToken }; // refreshToken attached to req.user
+
+    // Pass the raw token AND the tokenId (jti) from the payload
+    // so AuthService.refresh() knows which Redis key to look up
+    return {
+      sub: payload.sub,
+      email: payload.email,
+      role: payload.role,
+      jti: payload.jti,   // ← the tokenId stored as Redis key suffix
+      refreshToken,       // ← the raw token for bcrypt.compare()
+    };
   }
 }

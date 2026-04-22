@@ -1,4 +1,12 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
@@ -26,12 +34,13 @@ export class AuthController {
     return this.authService.login(dto);
   }
 
-  // POST /api/v1/auth/refresh  ← send refreshToken as Bearer token
+  // POST /api/v1/auth/refresh  ← send refreshToken as Bearer
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtRefreshGuard)
   refresh(@CurrentUser() user: any) {
-    return this.authService.refresh(user.sub, user.refreshToken);
+    // user.jti is the tokenId from the refresh token's payload
+    return this.authService.refresh(user.sub, user.refreshToken, user.jti);
   }
 
   // POST /api/v1/auth/logout
@@ -39,17 +48,18 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAuthGuard)
   logout(@CurrentUser() user: any) {
-    return this.authService.logout(user._id.toString());
+    // Pass jti so the access token can be blacklisted immediately
+    return this.authService.logout(user._id.toString(), user.jti);
   }
 
-  // GET /api/v1/auth/me  ← any authenticated user
+  // GET /api/v1/auth/me
   @Get('me')
   @UseGuards(JwtAuthGuard)
   getProfile(@CurrentUser() user: any) {
     return this.authService.getProfile(user._id.toString());
   }
 
-  // GET /api/v1/auth/admin-only  ← demo role-protected route
+  // GET /api/v1/auth/admin-only
   @Get('admin-only')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN)
@@ -57,7 +67,7 @@ export class AuthController {
     return { message: `Welcome admin ${user.name}!` };
   }
 
-  // GET /api/v1/auth/driver-agency  ← demo multi-role route
+  // GET /api/v1/auth/driver-agency
   @Get('driver-agency')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.DRIVER, Role.AGENCY)

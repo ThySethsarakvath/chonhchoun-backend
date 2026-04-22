@@ -5,7 +5,7 @@ import { AuthModule } from '../auth/auth.module';
 
 @Module({
   imports: [
-    AuthModule, // re-uses the User model exported from AuthModule
+    AuthModule,
   ],
   controllers: [UsersController],
   providers: [UsersService],
