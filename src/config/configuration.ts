@@ -19,4 +19,13 @@ export default () => ({
       process.env.JWT_REFRESH_SECRET ?? 'dev_refresh_secret_replace_in_production',
     refreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN ?? '7d',
   },
+
+  mail: {
+    host: process.env.MAIL_HOST ?? 'smtp.gmail.com',
+    port: parseInt(process.env.MAIL_PORT ?? '587', 10),
+    secure: process.env.MAIL_SECURE === 'true',
+    user: process.env.MAIL_USER,
+    pass: process.env.MAIL_PASS,
+    from: process.env.MAIL_FROM ?? process.env.MAIL_USER,
+  },
 });

@@ -2,7 +2,6 @@ import { Injectable, Inject, Logger, OnModuleDestroy } from '@nestjs/common';
 import Redis from 'ioredis';
 import { REDIS_CLIENT } from './redis.constants';
 
-// ─── TTL constants (seconds) ─────────────────────────────────────────────────
 export const TTL = {
   REFRESH_TOKEN: 60 * 60 * 24 * 7,    // 7 days
   ACCESS_TOKEN_BLACKLIST: 60 * 15,     // 15 minutes (matches JWT expiry)
@@ -13,7 +12,6 @@ export const TTL = {
   VERIFICATION_TOKEN: 60 * 60 * 24,   // 24 hours
 } as const;
 
-// ─── Key builders — centralised so keys are never typo'd ─────────────────────
 export const RedisKey = {
   refreshToken: (userId: string, tokenId: string) =>
     `refresh_token:${userId}:${tokenId}`,
@@ -41,7 +39,6 @@ export class RedisService implements OnModuleDestroy {
     this.redis.disconnect();
   }
 
-  // ── Health ──────────────────────────────────────────────────────────────────
   async ping(): Promise<boolean> {
     try {
       const result = await this.redis.ping();
@@ -51,7 +48,6 @@ export class RedisService implements OnModuleDestroy {
     }
   }
 
-  // ── Core operations ─────────────────────────────────────────────────────────
   async set(key: string, value: string, ttlSeconds?: number): Promise<void> {
     if (ttlSeconds) {
       await this.redis.setex(key, ttlSeconds, value);
@@ -81,7 +77,7 @@ export class RedisService implements OnModuleDestroy {
     await this.redis.expire(key, ttlSeconds);
   }
 
-  // ── Pattern operations ───────────────────────────────────────────────────────
+  // Pattern operations
   async keys(pattern: string): Promise<string[]> {
     return this.redis.keys(pattern);
   }
@@ -92,7 +88,7 @@ export class RedisService implements OnModuleDestroy {
     this.logger.debug(`Deleted ${keys.length} keys matching: ${pattern}`);
   }
 
-  // ── Counter operations (for rate limiting / OTP attempts) ────────────────────
+  // Counter operations (for rate limiting / OTP attempts)
   async increment(key: string): Promise<number> {
     return this.redis.incr(key);
   }
@@ -105,7 +101,6 @@ export class RedisService implements OnModuleDestroy {
     return results?.[0]?.[1] as number ?? 0;
   }
 
-  // ── Hash operations (store structured objects) ────────────────────────────────
   async hset(key: string, data: Record<string, string>): Promise<void> {
     await this.redis.hset(key, data);
   }
@@ -123,7 +118,6 @@ export class RedisService implements OnModuleDestroy {
     await this.redis.hdel(key, ...fields);
   }
 
-  // ── Set operations (store collections — e.g. all tokens for a user) ──────────
   async sadd(key: string, ...members: string[]): Promise<void> {
     await this.redis.sadd(key, ...members);
   }
@@ -136,12 +130,10 @@ export class RedisService implements OnModuleDestroy {
     await this.redis.srem(key, ...members);
   }
 
-  // ────────────────────────────────────────────────────────────────────────────
   //  HIGH-LEVEL DOMAIN METHODS
   //  These wrap the core operations with business-specific logic
-  // ────────────────────────────────────────────────────────────────────────────
 
-  // ── Refresh Token cache ──────────────────────────────────────────────────────
+  // Refresh Token cache
   async saveRefreshToken(
     userId: string,
     tokenId: string,
@@ -171,7 +163,7 @@ export class RedisService implements OnModuleDestroy {
     this.logger.debug(`Revoked ${tokenIds.length} refresh tokens for user ${userId}`);
   }
 
-  // ── Access Token blacklist (for logout before expiry) ────────────────────────
+  // Access Token blacklist (for logout before expiry)
   async blacklistAccessToken(jti: string): Promise<void> {
     await this.set(
       RedisKey.blacklistedToken(jti),
@@ -184,7 +176,7 @@ export class RedisService implements OnModuleDestroy {
     return this.exists(RedisKey.blacklistedToken(jti));
   }
 
-  // ── OTP ─────────────────────────────────────────────────────────────────────
+  //  OTP
   async saveOtp(
     identifier: string, // email or phone
     purpose: string,    // 'email_verify' | 'password_reset' | 'login_2fa'

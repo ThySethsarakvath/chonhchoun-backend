@@ -22,7 +22,7 @@ export class AuthService {
     @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
-    private readonly redisService: RedisService, // ← injected
+    private readonly redisService: RedisService,
   ) {}
 
   // ── Register ─────────────────────────────────────────────────────────────────
@@ -64,45 +64,34 @@ export class AuthService {
     return { user: this.sanitizeUser(user), ...tokens };
   }
 
-  // ── Refresh ───────────────────────────────────────────────────────────────────
   async refresh(userId: string, rawRefreshToken: string, tokenId: string) {
-    // 1. Get the stored hash from Redis using tokenId embedded in the JWT
+    //  Get the stored hash from Redis using tokenId embedded in the JWT
     const storedHash = await this.redisService.getRefreshToken(userId, tokenId);
     if (!storedHash) throw new UnauthorizedException('Refresh token expired or revoked');
 
-    // 2. Verify the raw token matches the stored hash
     const isMatch = await bcrypt.compare(rawRefreshToken, storedHash);
     if (!isMatch) throw new UnauthorizedException('Invalid refresh token');
 
-    // 3. Revoke the used token (token rotation — single use)
     await this.redisService.revokeRefreshToken(userId, tokenId);
 
-    // 4. Get user from DB
     const user = await this.userModel.findById(userId);
     if (!user || !user.isActive) throw new UnauthorizedException('User not found');
 
-    // 5. Issue a new pair
     const tokens = await this.generateTokens(user);
     await this.storeRefreshToken(userId, tokens.refreshToken);
 
     return tokens;
   }
 
-  // ── Logout ────────────────────────────────────────────────────────────────────
+  // Logout
   async logout(userId: string, jti?: string) {
-    // Revoke all refresh tokens for this user in Redis
     await this.redisService.revokeAllRefreshTokens(userId);
-
-    // Blacklist the current access token so it can't be reused before expiry
     if (jti) await this.redisService.blacklistAccessToken(jti);
-
-    // Remove session cache
     await this.redisService.deleteUserSession(userId);
-
     return { message: 'Logged out successfully' };
   }
 
-  // ── Get profile ───────────────────────────────────────────────────────────────
+  // Get profile
   async getProfile(userId: string) {
     // Try Redis session first before hitting MongoDB
     const cached = await this.redisService.getUserSession(userId);
@@ -115,7 +104,6 @@ export class AuthService {
     return this.sanitizeUser(user);
   }
 
-  // ── Helpers ───────────────────────────────────────────────────────────────────
   private async generateTokens(user: UserDocument) {
   const tokenId = uuidv4();
 
