@@ -4,7 +4,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { PassportStrategy } from '@nestjs/passport';
 import { Model } from 'mongoose';
 import { ExtractJwt, Strategy } from 'passport-jwt';
-import { User, UserDocument } from '../schemas/user.schema';
+import { User, UserDocument } from '../../../shared/schemas/user.schema';
 import { RedisService } from '../../redis/redis.service';
 
 export interface JwtPayload {

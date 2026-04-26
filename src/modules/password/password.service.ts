@@ -10,7 +10,7 @@ import { Model } from 'mongoose';
 import * as bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 
-import { User, UserDocument } from '../auth/schemas/user.schema';
+import { User, UserDocument } from '../../shared/schemas/user.schema';
 import { RedisService } from '../redis/redis.service';
 import { MailService } from '../mail/mail.service';
 import { ForgotPasswordDto } from '../auth/dto/forgot-password.dto';

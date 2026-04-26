@@ -11,7 +11,7 @@ import { Model, Types } from 'mongoose';
 import * as bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 
-import { User, UserDocument } from './schemas/user.schema';
+import { User, UserDocument } from '../../shared/schemas/user.schema';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { RedisService } from '../redis/redis.service';

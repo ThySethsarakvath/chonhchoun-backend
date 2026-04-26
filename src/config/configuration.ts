@@ -28,4 +28,10 @@ export default () => ({
     pass: process.env.MAIL_PASS,
     from: process.env.MAIL_FROM ?? process.env.MAIL_USER,
   },
+
+  cloudinary: {
+    cloudName: process.env.CLOUDINARY_CLOUD_NAME,
+    apiKey: process.env.CLOUDINARY_API_KEY,
+    apiSecret: process.env.CLOUDINARY_API_SECRET,
+  },
 });
