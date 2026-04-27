@@ -8,7 +8,6 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
-import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { JwtRefreshGuard } from './guards/jwt-refresh.guard';
@@ -17,15 +16,12 @@ import { Roles } from './decorators/roles.decorators';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { Role } from '../../common/enum/role.enum';
 
+// NOTE: Registration is now handled by RegistrationController
+// at POST /auth/register/initiate, /verify-email, /complete
+
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
-
-  // POST /api/v1/auth/register
-  @Post('register')
-  register(@Body() dto: RegisterDto) {
-    return this.authService.register(dto);
-  }
 
   // POST /api/v1/auth/login
   @Post('login')
@@ -34,12 +30,11 @@ export class AuthController {
     return this.authService.login(dto);
   }
 
-  // POST /api/v1/auth/refresh  ← send refreshToken as Bearer
+  // POST /api/v1/auth/refresh
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtRefreshGuard)
   refresh(@CurrentUser() user: any) {
-    // user.jti is the tokenId from the refresh token's payload
     return this.authService.refresh(user.sub, user.refreshToken, user.jti);
   }
 
@@ -48,7 +43,6 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAuthGuard)
   logout(@CurrentUser() user: any) {
-    // Pass jti so the access token can be blacklisted immediately
     return this.authService.logout(user._id.toString(), user.jti);
   }
 

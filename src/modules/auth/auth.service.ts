@@ -1,18 +1,16 @@
 import {
   Injectable,
-  ConflictException,
   UnauthorizedException,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-import { Model, Types } from 'mongoose';
+import { Model } from 'mongoose';
 import * as bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 
 import { User, UserDocument } from '../../shared/schemas/user.schema';
-import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { RedisService } from '../redis/redis.service';
 
@@ -24,20 +22,6 @@ export class AuthService {
     private readonly configService: ConfigService,
     private readonly redisService: RedisService,
   ) {}
-
-  // ── Register ─────────────────────────────────────────────────────────────────
-  async register(dto: RegisterDto) {
-    const existing = await this.userModel.findOne({ email: dto.email });
-    if (existing) throw new ConflictException('Email already registered');
-
-    const hashed = await bcrypt.hash(dto.password, 10);
-    const user = await this.userModel.create({ ...dto, password: hashed });
-
-    const tokens = await this.generateTokens(user);
-    await this.storeRefreshToken(user._id.toString(), tokens.refreshToken);
-
-    return { user: this.sanitizeUser(user), ...tokens };
-  }
 
   // ── Login ─────────────────────────────────────────────────────────────────────
   async login(dto: LoginDto) {
@@ -51,10 +35,8 @@ export class AuthService {
 
     if (!user.isActive) throw new UnauthorizedException('Account is deactivated');
 
-    const tokens = await this.generateTokens(user);
-    await this.storeRefreshToken(user._id.toString(), tokens.refreshToken);
+    const tokens = await this.issueTokensForUser(user);
 
-    // Cache lightweight session in Redis to avoid DB hits on every request
     await this.redisService.saveUserSession(user._id.toString(), {
       name: user.name,
       email: user.email,
@@ -64,8 +46,8 @@ export class AuthService {
     return { user: this.sanitizeUser(user), ...tokens };
   }
 
+  // ── Refresh ───────────────────────────────────────────────────────────────────
   async refresh(userId: string, rawRefreshToken: string, tokenId: string) {
-    //  Get the stored hash from Redis using tokenId embedded in the JWT
     const storedHash = await this.redisService.getRefreshToken(userId, tokenId);
     if (!storedHash) throw new UnauthorizedException('Refresh token expired or revoked');
 
@@ -77,13 +59,10 @@ export class AuthService {
     const user = await this.userModel.findById(userId);
     if (!user || !user.isActive) throw new UnauthorizedException('User not found');
 
-    const tokens = await this.generateTokens(user);
-    await this.storeRefreshToken(userId, tokens.refreshToken);
-
-    return tokens;
+    return this.issueTokensForUser(user);
   }
 
-  // Logout
+  // ── Logout ────────────────────────────────────────────────────────────────────
   async logout(userId: string, jti?: string) {
     await this.redisService.revokeAllRefreshTokens(userId);
     if (jti) await this.redisService.blacklistAccessToken(jti);
@@ -91,57 +70,57 @@ export class AuthService {
     return { message: 'Logged out successfully' };
   }
 
-  // Get profile
+  // ── Get profile ───────────────────────────────────────────────────────────────
   async getProfile(userId: string) {
-    // Try Redis session first before hitting MongoDB
     const cached = await this.redisService.getUserSession(userId);
-    if (cached) {
-      return { _id: userId, ...cached, fromCache: true };
-    }
+    if (cached) return { _id: userId, ...cached, fromCache: true };
 
     const user = await this.userModel.findById(userId);
     if (!user) throw new NotFoundException('User not found');
     return this.sanitizeUser(user);
   }
 
-  private async generateTokens(user: UserDocument) {
-  const tokenId = uuidv4();
+  // ── PUBLIC: issue tokens for any user document ────────────────────────────────
+  // Used by RegistrationService after account creation so token logic
+  // lives in exactly one place.
+  async issueTokensForUser(user: UserDocument): Promise<{ accessToken: string; refreshToken: string }> {
+    const tokenId = uuidv4();
+    const payload = {
+      sub: user._id.toString(),
+      email: user.email,
+      role: user.role,
+      jti: tokenId,
+    };
 
-  const payload = {
-    sub: user._id.toString(),
-    email: user.email,
-    role: user.role,
-    jti: tokenId,
-  };
+    const [accessToken, refreshToken] = await Promise.all([
+      this.jwtService.signAsync(payload, {
+        secret: this.configService.get('jwt.secret'),
+        expiresIn: this.configService.get('jwt.expiresIn'),
+      }),
+      this.jwtService.signAsync(
+        { ...payload, jti: uuidv4() },
+        {
+          secret: this.configService.get('jwt.refreshSecret'),
+          expiresIn: this.configService.get('jwt.refreshExpiresIn'),
+        },
+      ),
+    ]);
 
-  const [accessToken, refreshToken] = await Promise.all([
-    this.jwtService.signAsync(payload, {
-      secret: this.configService.get('jwt.secret'),
-      expiresIn: this.configService.get('jwt.expiresIn'),
-    }),
-    this.jwtService.signAsync(
-      { ...payload, jti: uuidv4() },
-      {
-        secret: this.configService.get('jwt.refreshSecret'),
-        expiresIn: this.configService.get('jwt.refreshExpiresIn'),
-      },
-    ),
-  ]);
+    // Store hashed refresh token in Redis
+    const decoded = this.jwtService.decode(refreshToken) as any;
+    const refreshTokenId = decoded?.jti ?? uuidv4();
+    const hashed = await bcrypt.hash(refreshToken, 10);
+    await this.redisService.saveRefreshToken(
+      user._id.toString(),
+      refreshTokenId,
+      hashed,
+    );
 
-  return { accessToken, refreshToken, tokenId };
-}
-
-  private async storeRefreshToken(userId: string, rawToken: string) {
-    // Decode to get the jti embedded in the refresh token
-    const decoded = this.jwtService.decode(rawToken) as any;
-    const tokenId = decoded?.jti ?? uuidv4();
-
-    const hashed = await bcrypt.hash(rawToken, 10);
-    await this.redisService.saveRefreshToken(userId, tokenId, hashed);
-    return tokenId;
+    return { accessToken, refreshToken };
   }
 
-  private sanitizeUser(user: UserDocument) {
+  // ── Sanitize — strips sensitive fields before returning to client ─────────────
+  sanitizeUser(user: UserDocument) {
     return {
       _id: user._id,
       name: user.name,

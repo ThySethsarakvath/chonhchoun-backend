@@ -10,6 +10,7 @@ import { MailModule } from './modules/mail/mail.module';
 import { PasswordModule} from './modules/password/password.module';
 import { CloudinaryModule } from './modules/database/cloudinary/cloudinary.module';
 import { OnboardingModule } from './modules/onboarding/onboarding.module';
+import { RegistrationModule } from './modules/registration/registration.module';
 // import { PackagesModule } from './modules/packages/packages.module';
 import configuration from './config/configuration';
 
@@ -23,6 +24,7 @@ import configuration from './config/configuration';
     RedisModule,
     DatabaseModule,
     AuthModule,
+    RegistrationModule,
     MailModule,
     PasswordModule,
     UsersModule,

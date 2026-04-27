@@ -6,8 +6,8 @@ import { MailModule } from '../mail/mail.module';
 
 @Module({
   imports: [
-    AuthModule,   // provides User model
-    MailModule,   // provides MailService
+    AuthModule,
+    MailModule,
   ],
   controllers: [PasswordController],
   providers: [PasswordService],

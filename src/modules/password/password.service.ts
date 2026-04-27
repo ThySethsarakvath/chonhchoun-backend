@@ -17,7 +17,6 @@ import { ForgotPasswordDto } from '../auth/dto/forgot-password.dto';
 import { VerifyOtpDto } from '../auth/dto/verify-otp.dto';
 import { ResetPasswordDto } from '../auth/dto/reset-password.dto';
 
-// ── Constants ─────────────────────────────────────────────────────────────────
 const OTP_PURPOSE = 'password_reset';
 const OTP_TTL = 60 * 10;          // 10 minutes to enter the PIN
 const OTP_MAX_ATTEMPTS = 5;        // 5 wrong attempts → lock
@@ -114,7 +113,7 @@ export class PasswordService {
       );
     }
 
-    // ✅ PIN is correct — clean up OTP and attempt counter immediately
+    // PIN is correct — clean up OTP and attempt counter immediately
     await this.redisService.deleteOtp(dto.email, OTP_PURPOSE);
     await this.redisService.resetOtpAttempts(dto.email, OTP_PURPOSE);
 
