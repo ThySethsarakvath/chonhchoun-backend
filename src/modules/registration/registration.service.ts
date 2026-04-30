@@ -63,7 +63,10 @@ export class RegistrationService {
     // Key: pending_register:email → { name }
     await this.redisService.set(
       `pending_register:${dto.email}`,
-      JSON.stringify({ name: dto.name }),
+      JSON.stringify({
+        name: dto.name,
+        role: dto.role ?? Role.CUSTOMER,
+    }),
       OTP_TTL,
     );
 
@@ -121,16 +124,16 @@ export class RegistrationService {
 
     // Get the pending name stored in step 1
     const pendingRaw = await this.redisService.get(`pending_register:${dto.email}`);
-    const { name } = pendingRaw
-      ? (JSON.parse(pendingRaw) as { name: string })
-      : { name: '' };
+    const { name, role } = pendingRaw
+     ? (JSON.parse(pendingRaw) as { name: string; role: Role })
+    : { name: '', role: Role.CUSTOMER };
 
     // Issue setupToken — proves this email was verified
     const setupToken = uuidv4();
     await this.redisService.saveVerificationToken(
       setupToken,
       SETUP_TOKEN_PURPOSE,
-      JSON.stringify({ email: dto.email, name }),
+     JSON.stringify({ email: dto.email, name, role }),
     );
     await this.redisService.expire(
       `verify:${SETUP_TOKEN_PURPOSE}:${setupToken}`,
@@ -157,7 +160,11 @@ export class RegistrationService {
       );
     }
 
-    const { email, name } = JSON.parse(stored) as { email: string; name: string };
+  const { email, name, role } = JSON.parse(stored) as {
+        email: string;
+        name: string;
+        role: Role;
+  };
 
     // Final check — email still not taken (edge case: someone registered between steps)
     const existing = await this.userModel.findOne({ email });
@@ -171,7 +178,7 @@ export class RegistrationService {
       name,
       email,
       password: hashed,
-      role: dto.role ?? Role.CUSTOMER,
+      role: role ?? Role.CUSTOMER,
       isActive: true,
     });
 

@@ -1,4 +1,5 @@
-import { IsEmail, IsNotEmpty, IsString, MaxLength } from 'class-validator';
+import { IsEmail, IsEnum, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
+import { Role } from '../../../common/enum/role.enum';
 
 export class InitiateRegisterDto {
   @IsString()
@@ -7,5 +8,11 @@ export class InitiateRegisterDto {
   name: string;
 
   @IsEmail()
+  @IsNotEmpty()
   email: string;
+
+
+  @IsOptional()
+  @IsEnum(Role)
+  role?: Role;
 }
