@@ -7,10 +7,10 @@ import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { RedisModule } from './modules/redis/redis.module';
 import { MailModule } from './modules/mail/mail.module';
-import { PasswordModule} from './modules/password/password.module';
+import { PasswordModule} from './modules/auth/password/password.module';
 import { CloudinaryModule } from './modules/database/cloudinary/cloudinary.module';
 import { OnboardingModule } from './modules/onboarding/onboarding.module';
-import { RegistrationModule } from './modules/registration/registration.module';
+import { RegistrationModule } from './modules/auth/registration/registration.module';
 // import { PackagesModule } from './modules/packages/packages.module';
 import configuration from './config/configuration';
 

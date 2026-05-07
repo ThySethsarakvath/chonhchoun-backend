@@ -10,14 +10,15 @@ import { Model } from 'mongoose';
 import * as bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 
-import { User, UserDocument } from '../../shared/schemas/user.schema';
-import { RedisService } from '../redis/redis.service';
-import { MailService } from '../mail/mail.service';
-import { AuthService } from '../auth/auth.service';
-import { InitiateRegisterDto } from '../auth/dto/initiate-register.dto';
-import { VerifyEmailDto } from '../auth/dto/verify-email.dto';
-import { CompleteRegisterDto } from '../auth/dto/complete-register.dto';
-import { Role } from '../../common/enum/role.enum';
+import { User, UserDocument } from '../../../shared/schemas/user.schema';
+import { RedisService } from '../../redis/redis.service';
+import { MailService } from '../../mail/mail.service';
+import { AuthService } from '../auth.service';
+import { InitiateRegisterDto } from '../dto/initiate-register.dto';
+import { VerifyEmailDto } from '../dto/verify-email.dto';
+import { CompleteRegisterDto } from '../dto/complete-register.dto';
+import { Role } from '../../../common/enum/role.enum';
+import { normalisePhone } from 'src/common/utils/phone.util';
 
 const OTP_PURPOSE = 'email_verification';
 const SETUP_TOKEN_PURPOSE = 'registration_setup';
@@ -38,8 +39,15 @@ export class RegistrationService {
   ) {}
 
   async initiate(dto: InitiateRegisterDto): Promise<{ message: string }> {
-    const existing = await this.userModel.findOne({ email: dto.email });
-    if (existing) {
+
+    const phone = normalisePhone(dto.phone);
+    const phoneTaken = await this.userModel.exists({phone});
+    if (phoneTaken) {
+      throw new ConflictException('This phone number is already registered. Please log in.');
+    }
+
+    const emailTaken = await this.userModel.findOne({ email: dto.email });
+    if (emailTaken) {
       throw new ConflictException('This email is already registered. Please log in.');
     }
 

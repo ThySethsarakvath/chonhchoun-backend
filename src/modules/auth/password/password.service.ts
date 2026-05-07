@@ -10,12 +10,12 @@ import { Model } from 'mongoose';
 import * as bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 
-import { User, UserDocument } from '../../shared/schemas/user.schema';
-import { RedisService } from '../redis/redis.service';
-import { MailService } from '../mail/mail.service';
-import { ForgotPasswordDto } from '../auth/dto/forgot-password.dto';
-import { VerifyOtpDto } from '../auth/dto/verify-otp.dto';
-import { ResetPasswordDto } from '../auth/dto/reset-password.dto';
+import { User, UserDocument } from '../../../shared/schemas/user.schema';
+import { RedisService } from '../../redis/redis.service';
+import { MailService } from '../../mail/mail.service';
+import { ForgotPasswordDto } from '../dto/forgot-password.dto';
+import { VerifyOtpDto } from '../dto/verify-otp.dto';
+import { ResetPasswordDto } from '../dto/reset-password.dto';
 
 const OTP_PURPOSE = 'password_reset';
 const OTP_TTL = 60 * 10;          // 10 minutes to enter the PIN

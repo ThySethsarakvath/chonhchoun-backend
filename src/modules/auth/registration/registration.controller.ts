@@ -1,8 +1,8 @@
 import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
 import { RegistrationService } from './registration.service';
-import { InitiateRegisterDto } from '../auth/dto/initiate-register.dto';
-import { VerifyEmailDto } from '../auth/dto/verify-email.dto';
-import { CompleteRegisterDto } from '../auth/dto/complete-register.dto';
+import { InitiateRegisterDto } from '../dto/initiate-register.dto';
+import { VerifyEmailDto } from '../dto/verify-email.dto';
+import { CompleteRegisterDto } from '../dto/complete-register.dto';
 
 @Controller('auth/register')
 export class RegistrationController {

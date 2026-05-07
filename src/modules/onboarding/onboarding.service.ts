@@ -41,20 +41,15 @@ export class OnboardingService {
     return slide;
   }
 
-  // ── CREATE (admin only) — requires image file ────────────────────────────────
   async create(
     dto: CreateOnboardingDto,
     file: Express.Multer.File,
   ): Promise<OnboardingDocument> {
     if (!file) throw new BadRequestException('Image file is required.');
-
-    // Auto-assign order to end if not provided
     if (dto.order === undefined) {
       const count = await this.onboardingModel.countDocuments();
       dto.order = count;
     }
-
-    // Upload to Cloudinary
     const { url, publicId } = await this.cloudinaryService.uploadImage(
       file,
       'chonhchoun/onboarding',
@@ -69,8 +64,7 @@ export class OnboardingService {
     this.logger.log(`Onboarding slide created: ${slide._id}`);
     return slide;
   }
-
-  // ── UPDATE text fields (admin only) ─────────────────────────────────────────
+  
   async update(
     id: string,
     dto: UpdateOnboardingDto,
