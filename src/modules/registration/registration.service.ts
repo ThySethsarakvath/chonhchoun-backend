@@ -21,10 +21,10 @@ import { Role } from '../../common/enum/role.enum';
 
 const OTP_PURPOSE = 'email_verification';
 const SETUP_TOKEN_PURPOSE = 'registration_setup';
-const OTP_TTL = 60 * 10;           // 10 min to enter the PIN
+const OTP_TTL = 60 * 10; // 10 min to enter the PIN
 const OTP_MAX_ATTEMPTS = 5;
-const SETUP_TOKEN_TTL = 60 * 30;   // 30 min to complete registration after PIN verified
-const REQUEST_COOLDOWN_TTL = 60;   // 60s between OTP requests
+const SETUP_TOKEN_TTL = 60 * 30; // 30 min to complete registration after PIN verified
+const REQUEST_COOLDOWN_TTL = 60; // 60s between OTP requests
 
 @Injectable()
 export class RegistrationService {
@@ -40,7 +40,9 @@ export class RegistrationService {
   async initiate(dto: InitiateRegisterDto): Promise<{ message: string }> {
     const existing = await this.userModel.findOne({ email: dto.email });
     if (existing) {
-      throw new ConflictException('This email is already registered. Please log in.');
+      throw new ConflictException(
+        'This email is already registered. Please log in.',
+      );
     }
 
     const cooldownKey = `otp_cooldown:${OTP_PURPOSE}:${dto.email}`;
@@ -66,7 +68,7 @@ export class RegistrationService {
       JSON.stringify({
         name: dto.name,
         role: dto.role ?? Role.CUSTOMER,
-    }),
+      }),
       OTP_TTL,
     );
 
@@ -80,9 +82,14 @@ export class RegistrationService {
     return { message: 'A verification PIN has been sent to your email.' };
   }
 
-  async verifyEmail(dto: VerifyEmailDto): Promise<{ setupToken: string; expiresIn: number }> {
+  async verifyEmail(
+    dto: VerifyEmailDto,
+  ): Promise<{ setupToken: string; expiresIn: number }> {
     // Check attempt lockout
-    const attempts = await this.redisService.getOtpAttempts(dto.email, OTP_PURPOSE);
+    const attempts = await this.redisService.getOtpAttempts(
+      dto.email,
+      OTP_PURPOSE,
+    );
     if (attempts >= OTP_MAX_ATTEMPTS) {
       throw new UnauthorizedException(
         'Too many incorrect attempts. Please request a new PIN.',
@@ -123,17 +130,19 @@ export class RegistrationService {
     await this.redisService.resetOtpAttempts(dto.email, OTP_PURPOSE);
 
     // Get the pending name stored in step 1
-    const pendingRaw = await this.redisService.get(`pending_register:${dto.email}`);
+    const pendingRaw = await this.redisService.get(
+      `pending_register:${dto.email}`,
+    );
     const { name, role } = pendingRaw
-     ? (JSON.parse(pendingRaw) as { name: string; role: Role })
-    : { name: '', role: Role.CUSTOMER };
+      ? (JSON.parse(pendingRaw) as { name: string; role: Role })
+      : { name: '', role: Role.CUSTOMER };
 
     // Issue setupToken — proves this email was verified
     const setupToken = uuidv4();
     await this.redisService.saveVerificationToken(
       setupToken,
       SETUP_TOKEN_PURPOSE,
-     JSON.stringify({ email: dto.email, name, role }),
+      JSON.stringify({ email: dto.email, name, role }),
     );
     await this.redisService.expire(
       `verify:${SETUP_TOKEN_PURPOSE}:${setupToken}`,
@@ -160,16 +169,18 @@ export class RegistrationService {
       );
     }
 
-  const { email, name, role } = JSON.parse(stored) as {
-        email: string;
-        name: string;
-        role: Role;
-  };
+    const { email, name, role } = JSON.parse(stored) as {
+      email: string;
+      name: string;
+      role: Role;
+    };
 
     // Final check — email still not taken (edge case: someone registered between steps)
     const existing = await this.userModel.findOne({ email });
     if (existing) {
-      throw new ConflictException('This email was just registered. Please log in.');
+      throw new ConflictException(
+        'This email was just registered. Please log in.',
+      );
     }
 
     // Hash password and create the user
@@ -183,7 +194,10 @@ export class RegistrationService {
     });
 
     // Invalidate the setup token — single use
-    await this.redisService.deleteVerificationToken(dto.setupToken, SETUP_TOKEN_PURPOSE);
+    await this.redisService.deleteVerificationToken(
+      dto.setupToken,
+      SETUP_TOKEN_PURPOSE,
+    );
 
     // Clean up pending registration data
     await this.redisService.del(`pending_register:${email}`);

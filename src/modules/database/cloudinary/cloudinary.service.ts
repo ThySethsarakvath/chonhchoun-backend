@@ -1,4 +1,9 @@
-import { Injectable, Inject, BadRequestException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  Inject,
+  BadRequestException,
+  Logger,
+} from '@nestjs/common';
 import { v2 as cloudinaryV2, UploadApiResponse } from 'cloudinary';
 import { CLOUDINARY } from '../../../config/cloudinary.config';
 import * as streamifier from 'streamifier';
@@ -12,7 +17,9 @@ const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024; // 5MB
 export class CloudinaryService {
   private readonly logger = new Logger(CloudinaryService.name);
 
-  constructor(@Inject(CLOUDINARY) private readonly cloudinary: typeof cloudinaryV2) {}
+  constructor(
+    @Inject(CLOUDINARY) private readonly cloudinary: typeof cloudinaryV2,
+  ) {}
 
   // Upload a single image buffer to Cloudinary
   async uploadImage(
@@ -43,7 +50,10 @@ export class CloudinaryService {
         },
         (error, result?: UploadApiResponse) => {
           if (error || !result) {
-            this.logger.error('Cloudinary upload failed:', error?.message || 'No result returned');
+            this.logger.error(
+              'Cloudinary upload failed:',
+              error?.message || 'No result returned',
+            );
             return reject(new BadRequestException('Image upload failed.'));
           }
           resolve({

@@ -31,13 +31,24 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
   async validate(payload: JwtPayload) {
     // Check if this token has been blacklisted (i.e. user logged out)
     if (payload.jti) {
-      const blacklisted = await this.redisService.isTokenBlacklisted(payload.jti);
-      if (blacklisted) throw new UnauthorizedException('Token has been revoked');
+      const blacklisted = await this.redisService.isTokenBlacklisted(
+        payload.jti,
+      );
+      if (blacklisted)
+        throw new UnauthorizedException('Token has been revoked');
     }
 
     const user = await this.userModel.findById(payload.sub);
-    if (!user || !user.isActive) throw new UnauthorizedException('User not found or inactive');
+    if (!user || !user.isActive)
+      throw new UnauthorizedException('User not found or inactive');
 
-    return { _id: user._id, email: user.email, role: user.role, name: user.name, jti: payload.jti };
+    return {
+      _id: user._id,
+      email: user.email,
+      role: user.role,
+      name: user.name,
+      avatarUrl: user.avatarUrl ?? null,
+      jti: payload.jti,
+    };
   }
 }

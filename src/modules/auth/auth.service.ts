@@ -33,7 +33,8 @@ export class AuthService {
     const match = await bcrypt.compare(dto.password, user.password);
     if (!match) throw new UnauthorizedException('Invalid credentials');
 
-    if (!user.isActive) throw new UnauthorizedException('Account is deactivated');
+    if (!user.isActive)
+      throw new UnauthorizedException('Account is deactivated');
 
     const tokens = await this.issueTokensForUser(user);
 
@@ -41,6 +42,8 @@ export class AuthService {
       name: user.name,
       email: user.email,
       role: user.role,
+      isActive: String(user.isActive),
+      avatarUrl: user.avatarUrl ?? '',
     });
 
     return { user: this.sanitizeUser(user), ...tokens };
@@ -49,7 +52,8 @@ export class AuthService {
   // ── Refresh ───────────────────────────────────────────────────────────────────
   async refresh(userId: string, rawRefreshToken: string, tokenId: string) {
     const storedHash = await this.redisService.getRefreshToken(userId, tokenId);
-    if (!storedHash) throw new UnauthorizedException('Refresh token expired or revoked');
+    if (!storedHash)
+      throw new UnauthorizedException('Refresh token expired or revoked');
 
     const isMatch = await bcrypt.compare(rawRefreshToken, storedHash);
     if (!isMatch) throw new UnauthorizedException('Invalid refresh token');
@@ -57,7 +61,8 @@ export class AuthService {
     await this.redisService.revokeRefreshToken(userId, tokenId);
 
     const user = await this.userModel.findById(userId);
-    if (!user || !user.isActive) throw new UnauthorizedException('User not found');
+    if (!user || !user.isActive)
+      throw new UnauthorizedException('User not found');
 
     return this.issueTokensForUser(user);
   }
@@ -73,7 +78,17 @@ export class AuthService {
   // ── Get profile ───────────────────────────────────────────────────────────────
   async getProfile(userId: string) {
     const cached = await this.redisService.getUserSession(userId);
-    if (cached) return { _id: userId, ...cached, fromCache: true };
+    if (cached) {
+      return {
+        _id: userId,
+        name: cached.name ?? '',
+        email: cached.email ?? '',
+        role: cached.role ?? 'customer',
+        isActive: cached.isActive == null ? true : cached.isActive == 'true',
+        avatarUrl: cached.avatarUrl || null,
+        fromCache: true,
+      };
+    }
 
     const user = await this.userModel.findById(userId);
     if (!user) throw new NotFoundException('User not found');
@@ -83,7 +98,9 @@ export class AuthService {
   // ── PUBLIC: issue tokens for any user document ────────────────────────────────
   // Used by RegistrationService after account creation so token logic
   // lives in exactly one place.
-  async issueTokensForUser(user: UserDocument): Promise<{ accessToken: string; refreshToken: string }> {
+  async issueTokensForUser(
+    user: UserDocument,
+  ): Promise<{ accessToken: string; refreshToken: string }> {
     const tokenId = uuidv4();
     const payload = {
       sub: user._id.toString(),
@@ -127,6 +144,7 @@ export class AuthService {
       email: user.email,
       role: user.role,
       isActive: user.isActive,
+      avatarUrl: user.avatarUrl ?? null,
       createdAt: (user as any).createdAt,
     };
   }
