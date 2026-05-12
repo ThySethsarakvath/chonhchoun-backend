@@ -46,7 +46,6 @@ export class AuthService {
     return { user: this.sanitizeUser(user), ...tokens };
   }
 
-  // ── Refresh ───────────────────────────────────────────────────────────────────
   async refresh(userId: string, rawRefreshToken: string, tokenId: string) {
     const storedHash = await this.redisService.getRefreshToken(userId, tokenId);
     if (!storedHash) throw new UnauthorizedException('Refresh token expired or revoked');

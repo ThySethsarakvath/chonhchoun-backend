@@ -18,14 +18,14 @@ import { InitiateRegisterDto } from '../dto/initiate-register.dto';
 import { VerifyEmailDto } from '../dto/verify-email.dto';
 import { CompleteRegisterDto } from '../dto/complete-register.dto';
 import { Role } from '../../../common/enum/role.enum';
-import { normalisePhone } from 'src/common/utils/phone.util';
+import { normalisePhone } from '../../../common/utils/phone.util';
 
 const OTP_PURPOSE = 'email_verification';
 const SETUP_TOKEN_PURPOSE = 'registration_setup';
-const OTP_TTL = 60 * 10;           // 10 min to enter the PIN
+const OTP_TTL = 60 * 10;
 const OTP_MAX_ATTEMPTS = 5;
-const SETUP_TOKEN_TTL = 60 * 30;   // 30 min to complete registration after PIN verified
-const REQUEST_COOLDOWN_TTL = 60;   // 60s between OTP requests
+const SETUP_TOKEN_TTL = 60 * 30;
+const REQUEST_COOLDOWN_TTL = 60;
 
 @Injectable()
 export class RegistrationService {
@@ -39,16 +39,16 @@ export class RegistrationService {
   ) {}
 
   async initiate(dto: InitiateRegisterDto): Promise<{ message: string }> {
-
-    const phone = normalisePhone(dto.phone);
-    const phoneTaken = await this.userModel.exists({phone});
-    if (phoneTaken) {
-      throw new ConflictException('This phone number is already registered. Please log in.');
-    }
+    const phone = normalisePhone(dto.phone); // always store as +855XXXXXXXXX
 
     const emailTaken = await this.userModel.findOne({ email: dto.email });
     if (emailTaken) {
       throw new ConflictException('This email is already registered. Please log in.');
+    }
+
+    const phoneTaken = await this.userModel.findOne({ phone });
+    if (phoneTaken) {
+      throw new ConflictException('This phone number is already registered.');
     }
 
     const cooldownKey = `otp_cooldown:${OTP_PURPOSE}:${dto.email}`;
@@ -59,26 +59,19 @@ export class RegistrationService {
       );
     }
 
-    // Generate 6-digit PIN
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     const hashedOtp = await bcrypt.hash(otp, 10);
 
-    // Store PIN in Redis
     await this.redisService.saveOtp(dto.email, OTP_PURPOSE, hashedOtp);
     await this.redisService.resetOtpAttempts(dto.email, OTP_PURPOSE);
 
-    // Store name temporarily in Redis so we have it when creating the account
-    // Key: pending_register:email → { name }
     await this.redisService.set(
       `pending_register:${dto.email}`,
-      JSON.stringify({ name: dto.name }),
+      JSON.stringify({ name: dto.name, phone }),
       OTP_TTL,
     );
 
-    // Set cooldown
     await this.redisService.set(cooldownKey, '1', REQUEST_COOLDOWN_TTL);
-
-    // Send OTP email
     await this.mailService.sendRegistrationOtp(dto.email, otp, dto.name);
 
     this.logger.log(`Registration OTP sent to ${dto.email}`);
@@ -86,7 +79,6 @@ export class RegistrationService {
   }
 
   async verifyEmail(dto: VerifyEmailDto): Promise<{ setupToken: string; expiresIn: number }> {
-    // Check attempt lockout
     const attempts = await this.redisService.getOtpAttempts(dto.email, OTP_PURPOSE);
     if (attempts >= OTP_MAX_ATTEMPTS) {
       throw new UnauthorizedException(
@@ -94,7 +86,6 @@ export class RegistrationService {
       );
     }
 
-    // Get stored hash
     const storedHash = await this.redisService.getOtp(dto.email, OTP_PURPOSE);
     if (!storedHash) {
       throw new BadRequestException(
@@ -102,7 +93,6 @@ export class RegistrationService {
       );
     }
 
-    // Compare
     const isMatch = await bcrypt.compare(dto.otp, storedHash);
     if (!isMatch) {
       const newAttempts = await this.redisService.incrementOtpAttempts(
@@ -123,22 +113,19 @@ export class RegistrationService {
       );
     }
 
-    // PIN correct — clean up OTP
     await this.redisService.deleteOtp(dto.email, OTP_PURPOSE);
     await this.redisService.resetOtpAttempts(dto.email, OTP_PURPOSE);
 
-    // Get the pending name stored in step 1
     const pendingRaw = await this.redisService.get(`pending_register:${dto.email}`);
-    const { name } = pendingRaw
-      ? (JSON.parse(pendingRaw) as { name: string })
-      : { name: '' };
+    const pending = pendingRaw
+      ? (JSON.parse(pendingRaw) as { name: string; phone: string })
+      : { name: '', phone: '' };
 
-    // Issue setupToken — proves this email was verified
     const setupToken = uuidv4();
     await this.redisService.saveVerificationToken(
       setupToken,
       SETUP_TOKEN_PURPOSE,
-      JSON.stringify({ email: dto.email, name }),
+      JSON.stringify({ email: dto.email, name: pending.name, phone: pending.phone }),
     );
     await this.redisService.expire(
       `verify:${SETUP_TOKEN_PURPOSE}:${setupToken}`,
@@ -154,7 +141,6 @@ export class RegistrationService {
       throw new BadRequestException('Passwords do not match.');
     }
 
-    // Validate setupToken
     const stored = await this.redisService.getVerificationToken(
       dto.setupToken,
       SETUP_TOKEN_PURPOSE,
@@ -165,45 +151,51 @@ export class RegistrationService {
       );
     }
 
-    const { email, name } = JSON.parse(stored) as { email: string; name: string };
+    const { email, name, phone } = JSON.parse(stored) as {
+      email: string;
+      name: string;
+      phone: string;
+    };
 
-    // Final check — email still not taken (edge case: someone registered between steps)
     const existing = await this.userModel.findOne({ email });
     if (existing) {
       throw new ConflictException('This email was just registered. Please log in.');
     }
 
-    // Hash password and create the user
     const hashed = await bcrypt.hash(dto.password, 10);
     const user = await this.userModel.create({
       name,
       email,
+      phone,
       password: hashed,
       role: dto.role ?? Role.CUSTOMER,
       isActive: true,
+      avatarUrl: null,
+      avatarPublicId: null,
     });
 
-    // Invalidate the setup token — single use
     await this.redisService.deleteVerificationToken(dto.setupToken, SETUP_TOKEN_PURPOSE);
-
-    // Clean up pending registration data
     await this.redisService.del(`pending_register:${email}`);
 
-    // Issue auth tokens — user is immediately logged in after registering
-    // Delegate to AuthService so token logic stays in one place
     const tokens = await this.authService.issueTokensForUser(user);
 
     this.logger.log(`New user registered: ${email} (${user.role})`);
     return {
-      user: {
-        _id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        isActive: user.isActive,
-        createdAt: (user as any).createdAt,
-      },
+      user: this.sanitize(user),
       ...tokens,
+    };
+  }
+
+  private sanitize(user: UserDocument) {
+    return {
+      _id: user._id,
+      name: user.name,
+      email: user.email,
+      phone: user.phone,
+      role: user.role,
+      isActive: user.isActive,
+      avatarUrl: user.avatarUrl,
+      createdAt: (user as any).createdAt,
     };
   }
 }
