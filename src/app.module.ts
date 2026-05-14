@@ -13,6 +13,7 @@ import { OnboardingModule } from './modules/onboarding/onboarding.module';
 import { RegistrationModule } from './modules/auth/registration/registration.module';
 // import { PackagesModule } from './modules/packages/packages.module';
 import configuration from './config/configuration';
+import { AgenciesModule } from './modules/agencies/agencies.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import configuration from './config/configuration';
     UsersModule,
     CloudinaryModule,
     OnboardingModule,
+    AgenciesModule,
   ],
   controllers: [AppController],
   providers: [AppService],
