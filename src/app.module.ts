@@ -11,7 +11,7 @@ import { PasswordModule} from './modules/auth/password/password.module';
 import { CloudinaryModule } from './modules/database/cloudinary/cloudinary.module';
 import { OnboardingModule } from './modules/onboarding/onboarding.module';
 import { RegistrationModule } from './modules/auth/registration/registration.module';
-// import { PackagesModule } from './modules/packages/packages.module';
+import { PackagesModule } from './modules/packages/packages.module';
 import configuration from './config/configuration';
 
 @Module({
@@ -30,6 +30,7 @@ import configuration from './config/configuration';
     UsersModule,
     CloudinaryModule,
     OnboardingModule,
+    PackagesModule,
   ],
   controllers: [AppController],
   providers: [AppService],
