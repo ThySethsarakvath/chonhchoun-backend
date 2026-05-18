@@ -14,8 +14,17 @@ export class Branch {
   @Prop()
   address?: string;
 
-  @Prop()
-  description?: string; 
+  @Prop() 
+  description?: string;
+
+  @Prop({
+    type: {
+      lat: { type: Number, required: true },
+      lng: { type: Number, required: true },
+    },
+    _id: false,
+  })
+  location: { lat: number; lng: number };
 
   @Prop({ default: true })
   isActive: boolean;

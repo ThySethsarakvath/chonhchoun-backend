@@ -12,7 +12,7 @@ export class CreateBranchDto {
   @IsNotEmpty()
   @MaxLength(20)
   code: string;
-
+  
   @IsOptional()
   @IsString()
   @MaxLength(255)
