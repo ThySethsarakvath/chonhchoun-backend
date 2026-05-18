@@ -14,6 +14,7 @@ import { RegistrationModule } from './modules/auth/registration/registration.mod
 // import { PackagesModule } from './modules/packages/packages.module';
 import configuration from './config/configuration';
 import { AgenciesModule } from './modules/agencies/agencies.module';
+import { AdminModule } from './modules/admin/admin.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { AgenciesModule } from './modules/agencies/agencies.module';
     CloudinaryModule,
     OnboardingModule,
     AgenciesModule,
+    AdminModule,
   ],
   controllers: [AppController],
   providers: [AppService],

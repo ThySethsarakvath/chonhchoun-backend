@@ -8,12 +8,16 @@ import { CreateAgencyDto } from '../agencies/dto/create-agency.dto';
 import { CreateBranchDto } from '../agencies/dto/create-branch.dto';
 import { UpdateAgencyDto } from '../agencies/dto/update-agency.dto';
 import { UpdateBranchDto } from '../agencies/dto/update-branch.dto';
+import { AdminService } from './admin.service';
 
 @Controller('admin')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(Role.ADMIN)
 export class AdminController {
-  constructor(private readonly agenciesService: AgenciesService) {}
+  constructor(
+    private readonly agenciesService: AgenciesService,
+    private readonly adminService: AdminService,
+  ) {}
 
   @Get('overview')
   getOverview() {
@@ -58,5 +62,10 @@ export class AdminController {
   @Patch('agencies/:id')
   updateAgency(@Param('id') id: string, @Body() dto: UpdateAgencyDto) {
     return this.agenciesService.updateAgency(id, dto);
+  }
+
+  @Get('users')
+  findUsers() {
+    return this.adminService.findAllUsers();
   }
 }
