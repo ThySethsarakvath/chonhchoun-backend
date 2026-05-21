@@ -18,11 +18,18 @@ export class AgenciesRepository {
   }
 
   findBranches() {
-    return this.branchModel.find().sort({ name: 1 }).exec();
+    return this.branchModel
+      .find({ ownerId: { $exists: true, $ne: null } })
+      .populate('ownerId', 'name email phone')
+      .sort({ branchNumber: 1, name: 1 })
+      .exec();
   }
 
   findBranchById(id: string) {
-    return this.branchModel.findById(id).exec();
+    return this.branchModel
+      .findById(id)
+      .populate('ownerId', 'name email phone')
+      .exec();
   }
 
   findBranchByCode(code: string) {
@@ -30,7 +37,10 @@ export class AgenciesRepository {
   }
 
   updateBranch(id: string, payload: Partial<Branch>) {
-    return this.branchModel.findByIdAndUpdate(id, payload, { new: true }).exec();
+    return this.branchModel
+      .findByIdAndUpdate(id, payload, { returnDocument: 'after' })
+      .populate('ownerId', 'name email phone')
+      .exec();
   }
 
   createAgency(payload: Partial<Agency>) {
@@ -64,7 +74,7 @@ export class AgenciesRepository {
 
   updateAgency(id: string, payload: Partial<Agency>) {
     return this.agencyModel
-      .findByIdAndUpdate(id, payload, { new: true })
+      .findByIdAndUpdate(id, payload, { returnDocument: 'after' })
       .populate('user', 'name email phone role isActive avatarUrl')
       .populate('branch')
       .exec();
