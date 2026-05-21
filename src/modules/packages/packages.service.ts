@@ -43,6 +43,12 @@ export class PackagesService {
     }
   }
 
+  async findOne(id: string): Promise<Package> {
+    const pkg = await this.packageModel.findById(id).populate('senderId', 'fullName phone').populate('driverId', 'fullName phone').exec();
+    if (!pkg) throw new NotFoundException('Package not found');
+    return pkg;
+  }
+
   async findAll(): Promise<Package[]> {
     return this.packageModel.find().populate('senderId', 'fullName phone').exec();
   }
@@ -70,6 +76,26 @@ export class PackagesService {
     this.notifyAcceptance(pkg, driverId.toString()).catch(err => 
       console.error('FastAPI Acceptance Notification Error:', err.message)
     );
+
+    return pkg;
+  }
+
+  async cancelPackage(packageId: string, userId: any): Promise<Package> {
+    const pkg = await this.packageModel.findById(packageId);
+    if (!pkg) throw new NotFoundException('Package not found');
+
+    const userObjectId = typeof userId === 'string' ? new Types.ObjectId(userId) : userId;
+    
+    if (pkg.senderId.toString() !== userObjectId.toString()) {
+      throw new BadRequestException('You do not have permission to cancel this package');
+    }
+
+    if (pkg.status === 'delivered') {
+      throw new BadRequestException('Cannot cancel a delivered package');
+    }
+
+    pkg.status = 'canceled';
+    await pkg.save();
 
     return pkg;
   }

@@ -76,4 +76,8 @@ export class CreatePackageDto {
   @IsOptional()
   @IsString()
   noteToDriver?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  driverPickup?: boolean;
 }

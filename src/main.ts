@@ -1,3 +1,8 @@
+import * as dns from 'dns';
+
+// Force Node.js to use public DNS resolvers to bypass local ISP DNS SRV resolution issues
+dns.setServers(['8.8.8.8', '1.1.1.1', '8.8.4.4']);
+
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';

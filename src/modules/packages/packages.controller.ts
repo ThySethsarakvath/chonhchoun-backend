@@ -29,6 +29,16 @@ export class PackagesController {
     return this.packagesService.acceptPackage(id, user._id);
   }
 
+  @Patch(':id/cancel')
+  cancel(@Param('id') id: string, @CurrentUser() user: any) {
+    return this.packagesService.cancelPackage(id, user._id);
+  }
+
+  @Get(':id')
+  findOne(@Param('id') id: string) {
+    return this.packagesService.findOne(id);
+  }
+
   @Get()
   findAll() {
     return this.packagesService.findAll();

@@ -68,6 +68,9 @@ export class Package {
   @Prop()
   noteToDriver: String;
 
+  @Prop({ default: false })
+  driverPickup: Boolean;
+
   @Prop({ required: true, enum: ['searching', 'accepted', 'pickedUp', 'delivered', 'canceled'], default: 'searching' })
   status: String;
 }
