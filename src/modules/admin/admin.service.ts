@@ -142,10 +142,6 @@ export class AdminService {
     return this.branchesService.migratePendingBranchesToActive();
   }
 
-  async findActivityHistory() {
-    return this.adminActivityService.findRecent();
-  }
-
   async logManualBranchCreate(branch: any, actor?: any) {
     return this.adminActivityService.log({
       action: 'branch_created',

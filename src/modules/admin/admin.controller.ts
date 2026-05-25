@@ -5,9 +5,7 @@ import { Roles } from '../auth/decorators/roles.decorators';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/role.guard';
 import { AgenciesService } from '../agencies/agencies.service';
-import { CreateAgencyDto } from '../agencies/dto/create-agency.dto';
 import { CreateBranchDto } from '../agencies/dto/create-branch.dto';
-import { UpdateAgencyDto } from '../agencies/dto/update-agency.dto';
 import { UpdateBranchDto } from '../agencies/dto/update-branch.dto';
 import { UpgradeBranchOwnerDto } from './dto/upgrade-branch-owner.dto';
 import { AdminService } from './admin.service';
@@ -53,34 +51,9 @@ export class AdminController {
     return this.adminService.migratePendingBranches();
   }
 
-  @Get('agencies')
-  findAgencies() {
-    return this.agenciesService.findAllAgencies();
-  }
-
-  @Post('agencies')
-  createAgency(@Body() dto: CreateAgencyDto) {
-    return this.agenciesService.createAgency(dto);
-  }
-
-  @Get('agencies/:id')
-  findAgency(@Param('id') id: string) {
-    return this.agenciesService.findAgencyById(id);
-  }
-
-  @Patch('agencies/:id')
-  updateAgency(@Param('id') id: string, @Body() dto: UpdateAgencyDto) {
-    return this.agenciesService.updateAgency(id, dto);
-  }
-
   @Get('users')
   findUsers() {
     return this.adminService.findAllUsers();
-  }
-
-  @Get('activity-history')
-  findActivityHistory() {
-    return this.adminService.findActivityHistory();
   }
 
   @Patch('users/:id/upgrade-branch-owner')

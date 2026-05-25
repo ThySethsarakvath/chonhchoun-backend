@@ -27,6 +27,9 @@ export class Branch {
   @Prop()
   description?: string;
 
+  @Prop()
+  branchOwnerSince?: Date;
+
   @Prop({
     type: {
       lat: { type: Number },

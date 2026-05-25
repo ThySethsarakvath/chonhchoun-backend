@@ -75,7 +75,7 @@ export class UsersController {
   // GET /api/v1/users/drivers
   @Get('drivers')
   @UseGuards(RolesGuard)
-  @Roles(Role.ADMIN, Role.AGENCY)
+  @Roles(Role.ADMIN)
   findDrivers() {
     return this.usersService.findByRole(Role.DRIVER);
   }

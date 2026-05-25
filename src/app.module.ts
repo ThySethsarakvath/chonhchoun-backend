@@ -16,6 +16,7 @@ import configuration from './config/configuration';
 import { AgenciesModule } from './modules/agencies/agencies.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { BranchesModule } from './modules/branches/branches.module';
+import { DriverApplicationsModule } from './modules/driver-applications/driver-applications.module';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { BranchesModule } from './modules/branches/branches.module';
     AgenciesModule,
     BranchesModule,
     AdminModule,
+    DriverApplicationsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

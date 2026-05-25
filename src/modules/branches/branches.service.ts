@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { BranchStatus } from '../../common/enum/branch-status.enum';
@@ -7,14 +7,30 @@ import { UserDocument } from '../../shared/schemas/user.schema';
 import { CreateOwnerBranchDto } from './dto/create-owner-branch.dto';
 
 @Injectable()
-export class BranchesService {
+export class BranchesService implements OnModuleInit {
+  private readonly logger = new Logger(BranchesService.name);
+
   constructor(
     @InjectModel(Branch.name)
     private readonly branchModel: Model<BranchDocument>,
   ) {}
 
+  async onModuleInit() {
+    await this.backfillBranchOwnerSince();
+  }
+
   async findByOwnerId(ownerId: string | Types.ObjectId) {
     return this.branchModel.findOne({ ownerId }).exec();
+  }
+
+  async findDetailedByOwnerId(ownerId: string | Types.ObjectId) {
+    return this.branchModel
+      .findOne({ ownerId })
+      .populate('ownerId', 'name email phone')
+      .select(
+        'name branchNumber code ownerId address phone description branchOwnerSince latitude longitude location logoUrl status isVisibleOnMap isActive',
+      )
+      .exec();
   }
 
   async suspendBranchByOwnerId(ownerId: string | Types.ObjectId) {
@@ -48,6 +64,7 @@ export class BranchesService {
 
   async createBranchForOwner(user: UserDocument, dto: CreateOwnerBranchDto) {
     const branchNumber = await this.getNextBranchNumber();
+    const branchOwnerSince = new Date();
 
     return this.branchModel.create({
       name: `Branch ${branchNumber}`,
@@ -56,6 +73,7 @@ export class BranchesService {
       ownerId: user._id as Types.ObjectId,
       phone: dto.phone.trim(),
       address: dto.address.trim(),
+      branchOwnerSince,
       latitude: dto.latitude,
       longitude: dto.longitude,
       location: {
@@ -67,6 +85,41 @@ export class BranchesService {
       isVisibleOnMap: true,
       isActive: true,
     });
+  }
+
+  private async backfillBranchOwnerSince() {
+    const branches = await this.branchModel
+      .find({
+        ownerId: { $exists: true, $ne: null },
+        $or: [
+          { branchOwnerSince: { $exists: false } },
+          { branchOwnerSince: null },
+        ],
+      })
+      .select('_id createdAt updatedAt')
+      .lean<{ _id: Types.ObjectId; createdAt?: Date; updatedAt?: Date }[]>()
+      .exec();
+
+    if (!branches.length) {
+      return;
+    }
+
+    const result = await this.branchModel.bulkWrite(
+      branches.map((branch) => ({
+        updateOne: {
+          filter: { _id: branch._id },
+          update: {
+            $set: {
+              branchOwnerSince: branch.createdAt ?? branch.updatedAt ?? new Date(),
+            },
+          },
+        },
+      })),
+    );
+
+    this.logger.log(
+      `Backfilled branchOwnerSince for ${result.modifiedCount} branch(es).`,
+    );
   }
 
   async migratePendingBranchesToActive() {
@@ -94,7 +147,7 @@ export class BranchesService {
       .sort({ name: 1 })
       .populate('ownerId', 'name email phone')
       .select(
-        'name branchNumber ownerId address phone latitude longitude location logoUrl status isVisibleOnMap',
+        'name branchNumber ownerId address phone description branchOwnerSince latitude longitude location logoUrl status isVisibleOnMap',
       )
       .exec();
   }

@@ -1,10 +1,7 @@
-import { Controller, Get, Post, Put, Body, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Put, Body, Param } from '@nestjs/common';
 import { AgenciesService } from './agencies.service';
 import { CreateBranchDto } from './dto/create-branch.dto';
 import { UpdateBranchDto } from './dto/update-branch.dto';
-import { CreateAgencyDto } from './dto/create-agency.dto';
-import { UpdateAgencyDto } from './dto/update-agency.dto';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @Controller('agencies-management')
 // @UseGuards(JwtAuthGuard)
@@ -32,19 +29,4 @@ export class AgenciesController {
     return this.agenciesService.updateBranch(id, dto);
   }
 
-  // --- Agency Endpoints ---
-  @Post('agencies')
-  createAgency(@Body() dto: CreateAgencyDto) {
-    return this.agenciesService.createAgency(dto);
-  }
-
-  @Get('agencies')
-  getAllAgencies() {
-    return this.agenciesService.findAllAgencies();
-  }
-
-  @Put('agencies/:id')
-  updateAgency(@Param('id') id: string, @Body() dto: UpdateAgencyDto) {
-    return this.agenciesService.updateAgency(id, dto);
-  }
 }
