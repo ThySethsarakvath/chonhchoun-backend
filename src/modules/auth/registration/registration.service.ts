@@ -137,6 +137,12 @@ export class RegistrationService {
   }
 
   async complete(dto: CompleteRegisterDto): Promise<any> {
+    if (dto.role != null && dto.role !== Role.CUSTOMER) {
+      throw new BadRequestException(
+        'Public registration can only create customer accounts.',
+      );
+    }
+
     if (dto.password !== dto.confirmPassword) {
       throw new BadRequestException('Passwords do not match.');
     }
