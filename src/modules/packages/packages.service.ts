@@ -1,22 +1,35 @@
 import {
   Injectable,
   NotFoundException,
-  BadRequestException,
   ForbiddenException,
+  BadRequestException,
   Logger,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
+
 import {
   Package,
   PackageDocument,
 } from '../../shared/schemas/package.schema';
-import { PackageStatus } from 'src/common/enum/package.enum';
-import {
-  CreatePackageDto,
-  UpdatePackageDto,
-  ListPackagesQueryDto,
-} from './dto/create-package.dto';
+import { User, UserDocument } from '../../shared/schemas/user.schema';
+import { CreateBookingDto } from './dto/create-booking.dto';
+import { UpdateBookingDto, CancelBookingDto } from './dto/update-booking.dto';
+import { QueryBookingDto } from './dto/query-booking.dto';
+import { BookingStatus, PaymentStatus } from '../../common/enum/package.enum';
+import { haversineKm, estimatePrice } from '../../common/utils/pricing.util';
+import { generateTrackingNumber } from '../../common/utils/tracking.util';
+import { normalisePhone } from '../../common/utils/phone.util';
+import { Role } from '../../common/enum/role.enum';
+
+// Shape of req.user injected by JwtStrategy
+interface RequestUser {
+  _id: Types.ObjectId;
+  name: string;
+  email: string;
+  phone: string;
+  role: Role;
+}
 
 @Injectable()
 export class PackagesService {
@@ -25,378 +38,270 @@ export class PackagesService {
   constructor(
     @InjectModel(Package.name)
     private readonly packageModel: Model<PackageDocument>,
+    @InjectModel(User.name)
+    private readonly userModel: Model<UserDocument>,
   ) {}
 
-  async create(
-    senderId: string,
-    dto: CreatePackageDto,
-  ): Promise<PackageDocument> {
-    // Validate senderId is a valid MongoDB ObjectId
-    if (!Types.ObjectId.isValid(senderId)) {
-      throw new BadRequestException('Invalid sender ID');
+  async create(dto: CreateBookingDto, user: RequestUser): Promise<PackageDocument> {
+    const dbUser = await this.userModel.findById(user._id);
+    if (!dbUser) {
+      throw new NotFoundException('User not found.');
     }
 
-    // Validate location data (latitude/longitude are within valid ranges)
-    this.validateCoordinates(
-      dto.pickup.location.latitude,
-      dto.pickup.location.longitude,
-    );
-    this.validateCoordinates(
-      dto.dropoff.location.latitude,
-      dto.dropoff.location.longitude,
-    );
+    const pickupPhone = dto.pickup.phone
+      ? normalisePhone(dto.pickup.phone)
+      : normalisePhone(dbUser.phone);
 
-    // Validate pickup time is in the future
-    if (new Date(dto.pickup.scheduledAt) < new Date()) {
+    if (!pickupPhone) {
       throw new BadRequestException(
-        'Pickup scheduled time must be in the future',
+        'Pickup phone is required. Please provide a phone number or ensure your user profile has a phone number.',
       );
     }
 
-    try {
-      const newPackage = await this.packageModel.create({
-        senderId: new Types.ObjectId(senderId),
-        vehicleType: dto.vehicleType,
-        items: dto.items,
-        pickup: {
-          location: dto.pickup.location,
-          contact: dto.pickup.contact,
-          scheduledAt: new Date(dto.pickup.scheduledAt),
-          actualPickupAt: null,
-        },
-        dropoff: {
-          location: dto.dropoff.location,
-          contact: dto.dropoff.contact,
-          estimatedDeliveryAt: null,
-          actualDeliveryAt: null,
-        },
-        payment: {
-          payer: dto.payment.payer,
-          method: dto.payment.method,
-          estimatedCost: dto.payment.estimatedCost || null,
-          actualCost: null,
-          isPaid: false,
-        },
-        status: PackageStatus.DRAFT,
-        assignedDriverId: null,
-        notes: dto.notes || null,
-      });
+    const pickup = {
+      ...dto.pickup,
+      contactName: dto.pickup.contactName?.trim() || dbUser.name,
+      phone: pickupPhone,
+    };
 
-      this.logger.log(`Package created: ${newPackage._id} by user ${senderId}`);
-      return newPackage;
-    } catch (error) {
-      this.logger.error(`Failed to create package: ${(error as Error).message}`);
-      throw new BadRequestException('Failed to create package');
-    }
-  }
+    const dropoff = {
+      ...dto.dropoff,
+      phone: normalisePhone(dto.dropoff.phone),
+    };
 
+    const distanceKm = haversineKm(
+      pickup.latitude,
+      pickup.longitude,
+      dropoff.latitude,
+      dropoff.longitude,
+    );
+    const estimatedPrice = estimatePrice(distanceKm, dto.vehicleType);
 
-  async findAll(
-    senderId: string,
-    query: ListPackagesQueryDto,
-  ): Promise<{ data: PackageDocument[]; total: number; page: number }> {
-    if (!Types.ObjectId.isValid(senderId)) {
-      throw new BadRequestException('Invalid sender ID');
-    }
-
-    const page = query.page || 1;
-    const limit = Math.min(query.limit || 20, 100); // Max 100 per page
-    const skip = (page - 1) * limit;
-
-    // Build filter
-    const filter: any = { senderId: new Types.ObjectId(senderId) };
-
-    if (query.status) {
-      if (!Object.values(PackageStatus).includes(query.status as PackageStatus)) {
-        throw new BadRequestException(`Invalid status: ${query.status}`);
+    if (dto.scheduledAt) {
+      const scheduled = new Date(dto.scheduledAt);
+      if (scheduled <= new Date()) {
+        throw new BadRequestException('scheduledAt must be a future date and time.');
       }
-      filter.status = query.status;
     }
 
-    // Build sort
-    const sortOptions: any = {};
-    const sortField = query.sortBy || 'createdAt';
-    const sortOrder = query.order === 'asc' ? 1 : -1;
-    sortOptions[sortField] = sortOrder;
+    const pkg = await this.packageModel.create({
+      trackingNumber: generateTrackingNumber(),
+      customerId: user._id,
+      vehicleType: dto.vehicleType,
+      package: {
+        name: dto.package.name,
+        type: dto.package.type,
+        quantity: dto.package.quantity,
+        weightKg: dto.package.weightKg ?? null,
+        images: dto.package.images ?? [],
+        note: dto.package.note ?? null,
+      },
+      pickup,
+      dropoff,
+      payment: {
+        payer: dto.payment.payer,
+        method: dto.payment.method,
+        status: PaymentStatus.PENDING,
+        amount: estimatedPrice,
+      },
+      status: BookingStatus.PENDING,
+      scheduledAt: dto.scheduledAt ? new Date(dto.scheduledAt) : null,
+      estimatedDistanceKm: Math.round(distanceKm * 100) / 100,
+      estimatedPrice,
+      driverId: null,
+    });
 
-    try {
-      const [data, total] = await Promise.all([
-        this.packageModel
-          .find(filter)
-          .sort(sortOptions)
-          .skip(skip)
-          .limit(limit)
-          .exec(),
-        this.packageModel.countDocuments(filter),
-      ]);
-
-      return { data, total, page };
-    } catch (error) {
-      this.logger.error(`Failed to fetch packages: ${(error as Error).message}`);
-      throw new BadRequestException('Failed to fetch packages');
-    }
+    this.logger.log(
+      `Package created: ${pkg.trackingNumber} by user ${user._id}`,
+    );
+    this.logger.log(`Created booking ID: ${pkg._id}`);
+    return pkg;
   }
 
-  /**
-   * Get a single package by ID
-   * Only the sender can view their package
-   */
-  async findOne(packageId: string, senderId: string): Promise<PackageDocument> {
-    if (!Types.ObjectId.isValid(packageId)) {
-      throw new BadRequestException('Invalid package ID');
-    }
+  async findMyBookings(userId: string, query: QueryBookingDto) {
+    return this.paginatedQuery({ customerId: new Types.ObjectId(userId) }, query);
+  }
 
-    const pkg = await this.packageModel.findById(packageId).exec();
+  async findOne(id: string, user: RequestUser): Promise<PackageDocument> {
+    const pkg = await this.packageModel
+      .findById(id)
+      .populate('customerId', 'name email phone')
+      .exec();
 
-    if (!pkg) {
-      throw new NotFoundException('Package not found');
-    }
+    if (!pkg) throw new NotFoundException('Package not found.');
 
-    // Authorization: only sender can view their package
-    if (pkg.senderId.toString() !== senderId) {
-      throw new ForbiddenException(
-        'You do not have permission to view this package',
-      );
+    if (
+      user.role !== Role.ADMIN &&
+      pkg.customerId.toString() !== user._id.toString()
+    ) {
+      throw new ForbiddenException('You do not have access to this package.');
     }
 
     return pkg;
   }
 
+  async findByTrackingNumber(trackingNumber: string) {
+    const pkg = await this.packageModel
+      .findOne({ trackingNumber: trackingNumber.toUpperCase() })
+      .select('-payment.amount -customerId')
+      .exec();
+
+    if (!pkg) throw new NotFoundException('Tracking number not found.');
+    return pkg;
+  }
+
+  async findAll(query: QueryBookingDto) {
+    return this.paginatedQuery({}, query);
+  }
+
   async update(
-    packageId: string,
-    senderId: string,
-    dto: UpdatePackageDto,
+    id: string,
+    dto: UpdateBookingDto,
+    user: RequestUser,
   ): Promise<PackageDocument> {
-    if (!Types.ObjectId.isValid(packageId)) {
-      throw new BadRequestException('Invalid package ID');
-    }
+    const pkg = await this.packageModel.findById(id);
+    if (!pkg) throw new NotFoundException('Package not found.');
 
-    const pkg = await this.packageModel.findById(packageId).exec();
+    this.assertOwner(pkg, user);
+    this.assertPending(pkg, 'edit');
 
-    if (!pkg) {
-      throw new NotFoundException('Package not found');
-    }
+    const pickup = dto.pickup
+      ? {
+          ...pkg.pickup,
+          ...dto.pickup,
+          contactName: dto.pickup.contactName?.trim() || pkg.pickup.contactName,
+          phone: dto.pickup.phone
+            ? normalisePhone(dto.pickup.phone)
+            : pkg.pickup.phone,
+        }
+      : pkg.pickup;
 
-    // Authorization: only sender can update their package
-    if (pkg.senderId.toString() !== senderId) {
-      throw new ForbiddenException(
-        'You do not have permission to update this package',
+    const dropoff = dto.dropoff
+      ? {
+          ...pkg.dropoff,
+          ...dto.dropoff,
+          phone: normalisePhone(dto.dropoff.phone),
+        }
+      : pkg.dropoff;
+
+    const vehicleType = dto.vehicleType ?? pkg.vehicleType;
+
+    let distanceKm = pkg.estimatedDistanceKm;
+    let estimatedPrice = pkg.estimatedPrice;
+
+    if (dto.pickup || dto.dropoff || dto.vehicleType) {
+      distanceKm = haversineKm(
+        pickup.latitude,
+        pickup.longitude,
+        dropoff.latitude,
+        dropoff.longitude,
       );
+      estimatedPrice = estimatePrice(distanceKm, vehicleType);
     }
 
-    // Only allow updates in DRAFT status
-    if (pkg.status !== PackageStatus.DRAFT) {
-      throw new BadRequestException(
-        `Cannot update package in ${pkg.status} status. Only DRAFT packages can be edited.`,
-      );
-    }
-
-    // Validate coordinates if location is being updated
-    if (dto.pickup?.location) {
-      this.validateCoordinates(
-        dto.pickup.location.latitude,
-        dto.pickup.location.longitude,
-      );
-    }
-    if (dto.dropoff?.location) {
-      this.validateCoordinates(
-        dto.dropoff.location.latitude,
-        dto.dropoff.location.longitude,
-      );
-    }
-
-    // Validate pickup time if being updated
-    if (dto.pickup?.scheduledAt) {
-      if (new Date(dto.pickup.scheduledAt) < new Date()) {
-        throw new BadRequestException(
-          'Pickup scheduled time must be in the future',
-        );
+    if (dto.scheduledAt) {
+      const scheduled = new Date(dto.scheduledAt);
+      if (scheduled <= new Date()) {
+        throw new BadRequestException('scheduledAt must be a future date.');
       }
     }
 
-    // Build update object
-    const updates: any = {};
-
-    if (dto.vehicleType) updates.vehicleType = dto.vehicleType;
-    if (dto.items) updates.items = dto.items;
-    if (dto.notes !== undefined) updates.notes = dto.notes;
-
-    if (dto.pickup) {
-      const pickupObj = pkg.pickup as any;
-      updates.pickup = {
-        ...pickupObj,
-        ...dto.pickup,
-      };
+    // Update document by modifying properties directly and saving
+    // This ensures nested objects like package, pickup, dropoff are properly merged
+    if (dto.vehicleType) pkg.vehicleType = dto.vehicleType;
+    if (dto.package) pkg.package = { ...pkg.package, ...dto.package };
+    if (dto.pickup) pkg.pickup = pickup;
+    if (dto.dropoff) pkg.dropoff = dropoff;
+    if (dto.payment) pkg.payment = { ...pkg.payment, ...dto.payment, amount: estimatedPrice };
+    if (dto.scheduledAt !== undefined) {
+      pkg.scheduledAt = dto.scheduledAt ? new Date(dto.scheduledAt) : null;
     }
+    pkg.estimatedDistanceKm = Math.round(distanceKm! * 100) / 100;
+    pkg.estimatedPrice = estimatedPrice;
 
-    if (dto.dropoff) {
-      const dropoffObj = pkg.dropoff as any;
-      updates.dropoff = {
-        ...dropoffObj,
-        ...dto.dropoff,
-      };
-    }
+    const updated = await pkg.save();
 
-    if (dto.payment) {
-      const paymentObj = pkg.payment as any;
-      updates.payment = {
-        ...paymentObj,
-        ...dto.payment,
-      };
-    }
-
-    try {
-      const updated = await this.packageModel
-        .findByIdAndUpdate(packageId, updates, { new: true })
-        .exec();
-
-      this.logger.log(
-        `Package updated: ${packageId} by user ${senderId}`,
-      );
-      return updated!;
-    } catch (error) {
-      this.logger.error(`Failed to update package: ${(error as Error).message}`);
-      throw new BadRequestException('Failed to update package');
-    }
+    this.logger.log(`Package updated: ${pkg.trackingNumber}`);
+    return updated;
   }
 
-  async remove(packageId: string, senderId: string): Promise<void> {
-    if (!Types.ObjectId.isValid(packageId)) {
-      throw new BadRequestException('Invalid package ID');
-    }
-
-    const pkg = await this.packageModel.findById(packageId).exec();
-
-    if (!pkg) {
-      throw new NotFoundException('Package not found');
-    }
-
-    // Authorization: only sender can delete their package
-    if (pkg.senderId.toString() !== senderId) {
-      throw new ForbiddenException(
-        'You do not have permission to delete this package',
-      );
-    }
-
-    // Only allow deletion in DRAFT status
-    if (pkg.status !== PackageStatus.DRAFT) {
-      throw new BadRequestException(
-        `Cannot delete package in ${pkg.status} status. Only DRAFT packages can be deleted.`,
-      );
-    }
-
-    try {
-      await this.packageModel.findByIdAndDelete(packageId).exec();
-      this.logger.log(
-        `Package deleted: ${packageId} by user ${senderId}`,
-      );
-    } catch (error) {
-      this.logger.error(`Failed to delete package: ${(error as Error).message}`);
-      throw new BadRequestException('Failed to delete package');
-    }
-  }
-
-  async submitForDelivery(
-    packageId: string,
-    senderId: string,
+  async cancel(
+    id: string,
+    dto: CancelBookingDto,
+    user: RequestUser,
   ): Promise<PackageDocument> {
-    if (!Types.ObjectId.isValid(packageId)) {
-      throw new BadRequestException('Invalid package ID');
-    }
+    const pkg = await this.packageModel.findById(id);
+    if (!pkg) throw new NotFoundException('Package not found.');
 
-    const pkg = await this.packageModel.findById(packageId).exec();
+    if (user.role !== Role.ADMIN) this.assertOwner(pkg, user);
+    this.assertPending(pkg, 'cancel');
 
-    if (!pkg) {
-      throw new NotFoundException('Package not found');
-    }
+    const cancelled = await this.packageModel
+      .findByIdAndUpdate(
+        id,
+        {
+          status: BookingStatus.CANCELLED,
+          cancellationReason: dto.reason ?? null,
+          cancelledAt: new Date(),
+        },
+        { new: true },
+      )
+      .exec();
 
-    if (pkg.senderId.toString() !== senderId) {
-      throw new ForbiddenException(
-        'You do not have permission to submit this package',
-      );
-    }
+    this.logger.log(`Package cancelled: ${pkg.trackingNumber}`);
+    return cancelled!;
+  }
 
-    if (pkg.status !== PackageStatus.DRAFT) {
-      throw new BadRequestException(
-        `Cannot submit package in ${pkg.status} status. Only DRAFT packages can be submitted.`,
-      );
-    }
+  async remove(id: string): Promise<{ message: string }> {
+    const pkg = await this.packageModel.findByIdAndDelete(id);
+    if (!pkg) throw new NotFoundException('Package not found.');
+    this.logger.log(`Package hard-deleted: ${pkg.trackingNumber}`);
+    return { message: 'Package deleted.' };
+  }
 
-    try {
-      const updated = await this.packageModel
-        .findByIdAndUpdate(
-          packageId,
-          { status: PackageStatus.PENDING },
-          { new: true },
-        )
-        .exec();
-
-      this.logger.log(
-        `Package submitted for delivery: ${packageId} by user ${senderId}`,
-      );
-      return updated!;
-    } catch (error) {
-      this.logger.error(`Failed to submit package: ${(error as Error).message}`);
-      throw new BadRequestException('Failed to submit package');
+  private assertOwner(pkg: PackageDocument, user: RequestUser) {
+    if (pkg.customerId.toString() !== user._id.toString()) {
+      throw new ForbiddenException('You do not have access to this package.');
     }
   }
 
-  /**
-   * Cancel a package (return from PENDING to DRAFT or to CANCELLED)
-   */
-  async cancel(packageId: string, senderId: string): Promise<PackageDocument> {
-    if (!Types.ObjectId.isValid(packageId)) {
-      throw new BadRequestException('Invalid package ID');
-    }
-
-    const pkg = await this.packageModel.findById(packageId).exec();
-
-    if (!pkg) {
-      throw new NotFoundException('Package not found');
-    }
-
-    if (pkg.senderId.toString() !== senderId) {
-      throw new ForbiddenException(
-        'You do not have permission to cancel this package',
-      );
-    }
-
-    // Can only cancel DRAFT or PENDING packages
-    if (![PackageStatus.DRAFT, PackageStatus.PENDING].includes(pkg.status)) {
+  private assertPending(pkg: PackageDocument, action: string) {
+    if (pkg.status !== BookingStatus.PENDING) {
       throw new BadRequestException(
-        `Cannot cancel package in ${pkg.status} status.`,
+        `Cannot ${action} a package with status "${pkg.status}".`,
       );
-    }
-
-    try {
-      const updated = await this.packageModel
-        .findByIdAndUpdate(
-          packageId,
-          { status: PackageStatus.CANCELLED },
-          { new: true },
-        )
-        .exec();
-
-      this.logger.log(
-        `Package cancelled: ${packageId} by user ${senderId}`,
-      );
-      return updated!;
-    } catch (error) {
-      this.logger.error(`Failed to cancel package: ${(error as Error).message}`);
-      throw new BadRequestException('Failed to cancel package');
     }
   }
 
-  private validateCoordinates(latitude: number, longitude: number): void {
-    if (latitude < -90 || latitude > 90) {
-      throw new BadRequestException(
-        'Latitude must be between -90 and 90 degrees',
-      );
-    }
-    if (longitude < -180 || longitude > 180) {
-      throw new BadRequestException(
-        'Longitude must be between -180 and 180 degrees',
-      );
-    }
+  private async paginatedQuery(filter: object, query: QueryBookingDto) {
+    const { page = 1, limit = 10, status, vehicleType, trackingNumber } = query;
+    const skip = (page - 1) * limit;
+
+    const where: Record<string, any> = { ...filter };
+    if (status) where.status = status;
+    if (vehicleType) where.vehicleType = vehicleType;
+    if (trackingNumber) where.trackingNumber = trackingNumber.toUpperCase();
+
+    const [data, total] = await Promise.all([
+      this.packageModel
+        .find(where)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate('customerId', 'name email phone avatarUrl')
+        .exec(),
+      this.packageModel.countDocuments(where),
+    ]);
+
+    return {
+      data,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+        hasNext: page * limit < total,
+      },
+    };
   }
 }

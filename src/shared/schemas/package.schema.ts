@@ -1,139 +1,124 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
-import {  PackageStatus, PackageType, PayerType, PaymentMethod, VehicleType } from '../../common/enum/package.enum';
+import {
+  VehicleType,
+  PackageType,
+  BookingStatus,
+  PaymentPayer,
+  PaymentMethod,
+  PaymentStatus,
+} from '../../common/enum/package.enum';
 
 export type PackageDocument = Package & Document;
 
 @Schema({ _id: false })
-export class Location {
+class Location {
+  @Prop({ required: true, trim: true })
+  address: string;
+
   @Prop({ required: true })
-  address!: string;
+  latitude: number;
 
-  @Prop({ required: true, type: Number })
-  latitude!: number;
+  @Prop({ required: true })
+  longitude: number;
 
-  @Prop({ required: true, type: Number })
-  longitude!: number;
+  @Prop({ required: true, trim: true })
+  contactName: string;
+
+  @Prop({ required: true, trim: true })
+  phone: string;
 }
-
-export const LocationSchema = SchemaFactory.createForClass(Location);
+const LocationSchema = SchemaFactory.createForClass(Location);
 
 @Schema({ _id: false })
-export class Contact {
-  @Prop({ required: true })
-  name!: string;
-
-  @Prop({ required: true })
-  phone!: string;
-}
-
-export const ContactSchema = SchemaFactory.createForClass(Contact);
-
-@Schema({ _id: false })
-export class PackageItem {
-  @Prop({ required: true })
-  name!: string;
+class PackageDetail {
+  @Prop({ required: true, trim: true })
+  name: string;
 
   @Prop({ required: true, enum: PackageType })
-  type!: PackageType;
+  type: PackageType;
 
   @Prop({ required: true, min: 1 })
-  quantity!: number;
+  quantity: number;
+
+  @Prop({ type: Number, default: null })
+  weightKg: number | null;
+
+  @Prop({ type: [String], default: [] })
+  images: string[];
 
   @Prop({ type: String, default: null })
-  note!: string | null;
+  note: string | null;
 }
-
-export const PackageItemSchema = SchemaFactory.createForClass(PackageItem);
+const PackageDetailSchema = SchemaFactory.createForClass(PackageDetail);
 
 @Schema({ _id: false })
-export class Pickup {
-  @Prop({ type: LocationSchema, required: true })
-  location!: Location;
-
-  @Prop({ type: ContactSchema, required: true })
-  contact!: Contact;
-
-  @Prop({ type: Date, required: true })
-  scheduledAt!: Date;
-
-  @Prop({ type: Date, default: null })
-  actualPickupAt!: Date | null;
-}
-
-export const PickupSchema = SchemaFactory.createForClass(Pickup);
-
-@Schema({ _id: false })
-export class Dropoff {
-  @Prop({ type: LocationSchema, required: true })
-  location!: Location;
-
-  @Prop({ type: ContactSchema, required: true })
-  contact!: Contact;
-
-  @Prop({ type: Date, default: null })
-  estimatedDeliveryAt!: Date | null;
-
-  @Prop({ type: Date, default: null })
-  actualDeliveryAt!: Date | null;
-}
-
-export const DropoffSchema = SchemaFactory.createForClass(Dropoff);
-
-@Schema({ _id: false })
-export class Payment {
-  @Prop({ required: true, enum: PayerType })
-  payer!: PayerType;
+class PaymentInfo {
+  @Prop({ required: true, enum: PaymentPayer })
+  payer: PaymentPayer;
 
   @Prop({ required: true, enum: PaymentMethod })
-  method!: PaymentMethod;
+  method: PaymentMethod;
+
+  @Prop({ required: true, enum: PaymentStatus, default: PaymentStatus.PENDING })
+  status: PaymentStatus;
 
   @Prop({ type: Number, default: null })
-  estimatedCost!: number | null;
-
-  @Prop({ type: Number, default: null })
-  actualCost!: number | null;
-
-  @Prop({ type: Boolean, default: false })
-  isPaid!: boolean;
+  amount: number | null;
 }
-
-export const PaymentSchema = SchemaFactory.createForClass(Payment);
+const PaymentInfoSchema = SchemaFactory.createForClass(PaymentInfo);
 
 @Schema({ timestamps: true })
 export class Package {
+  @Prop({ required: true, unique: true, trim: true })
+  trackingNumber: string;
 
   @Prop({ type: Types.ObjectId, ref: 'User', required: true })
-  senderId!: Types.ObjectId;
+  customerId: Types.ObjectId;
 
   @Prop({ required: true, enum: VehicleType })
-  vehicleType!: VehicleType;
+  vehicleType: VehicleType;
 
-  @Prop({ type: [PackageItemSchema], required: true })
-  items!: PackageItem[];
+  @Prop({ type: PackageDetailSchema, required: true })
+  package: PackageDetail;
 
-  @Prop({ type: PickupSchema, required: true })
-  pickup!: Pickup;
+  @Prop({ type: LocationSchema, required: true })
+  pickup: Location;
 
-  @Prop({ type: DropoffSchema, required: true })
-  dropoff!: Dropoff;
+  @Prop({ type: LocationSchema, required: true })
+  dropoff: Location;
 
-  @Prop({ type: PaymentSchema, required: true })
-  payment!: Payment;
+  @Prop({ type: PaymentInfoSchema, required: true })
+  payment: PaymentInfo;
 
-  @Prop({ enum: PackageStatus, default: PackageStatus.DRAFT })
-  status!: PackageStatus;
+  @Prop({
+    required: true,
+    enum: BookingStatus,
+    default: BookingStatus.PENDING,
+  })
+  status: BookingStatus;
 
-  @Prop({ type: Types.ObjectId, ref: 'User', default: null })
-  assignedDriverId!: Types.ObjectId | null;
+  @Prop({ type: Date, default: null })
+  scheduledAt: Date | null;
+
+  @Prop({ type: Number, default: null })
+  estimatedDistanceKm: number | null;
+
+  @Prop({ type: Number, default: null })
+  estimatedPrice: number | null;
 
   @Prop({ type: String, default: null })
-  notes!: string | null;
+  cancellationReason: string | null;
+
+  @Prop({ type: Date, default: null })
+  cancelledAt: Date | null;
+
+  @Prop({ type: Types.ObjectId, ref: 'User', default: null })
+  driverId: Types.ObjectId | null;
 }
 
 export const PackageSchema = SchemaFactory.createForClass(Package);
 
-// ─ Indexes for faster queries ────────────────────────────────────────────
-PackageSchema.index({ senderId: 1, createdAt: -1 }); // Find by sender + sort by date
-PackageSchema.index({ status: 1 }); // Filter by status
-PackageSchema.index({ assignedDriverId: 1 }); // Find by assigned driver
+PackageSchema.index({ customerId: 1, createdAt: -1 });
+PackageSchema.index({ status: 1 });
+PackageSchema.index({ driverId: 1 });
