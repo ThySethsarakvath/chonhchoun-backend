@@ -127,10 +127,17 @@ export class PackagesService {
   }
 
   async findMyBookings(userId: string, query: QueryBookingDto) {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('Invalid user ID format.');
+    }
     return this.paginatedQuery({ customerId: new Types.ObjectId(userId) }, query);
   }
 
   async findOne(id: string, user: RequestUser): Promise<PackageDocument> {
+    if (!Types.ObjectId.isValid(id)) {
+      throw new BadRequestException('Invalid package ID format.');
+    }
+
     const pkg = await this.packageModel
       .findById(id)
       .populate('customerId', 'name email phone')
