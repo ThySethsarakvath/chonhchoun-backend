@@ -4,6 +4,27 @@ import { Role } from '../../common/enum/role.enum';
 
 export type UserDocument = User & Document;
 
+@Schema({ _id: false })
+export class DriverProfile {
+  @Prop({ required: true, default: 'MOTORCYCLE' })
+  vehicleType: string;
+
+  @Prop({ required: true, default: 0 })
+  balance: number;
+
+  @Prop({ required: true, default: false })
+  isOnline: boolean;
+
+  @Prop({
+    type: {
+      lat: { type: Number },
+      lng: { type: Number },
+    },
+    default: null,
+  })
+  currentLocation?: { lat: number; lng: number } | null;
+}
+
 @Schema({ timestamps: true })
 export class User {
   @Prop({ required: true, trim: true })
@@ -40,6 +61,9 @@ export class User {
 
   @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Branch', default: null })
   branchId?: Types.ObjectId | null;
+
+  @Prop({ type: DriverProfile, default: null })
+  driverProfile?: DriverProfile | null;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);

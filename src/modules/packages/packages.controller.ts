@@ -12,6 +12,7 @@ import {
 import { PackagesService } from './packages.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { UpdateBookingDto, CancelBookingDto } from './dto/update-booking.dto';
+import { UpdatePackageStatusDto } from './dto/update-package-status.dto';
 import { QueryBookingDto } from './dto/query-booking.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/role.guard';
@@ -87,7 +88,7 @@ export class PackagesController {
   // GET /api/v1/packages/available
   // Driver: find available packages to deliver
   @Get('available')
-  @Roles(Role.DRIVER, Role.ADMIN)
+  @Roles(Role.DRIVER, Role.ADMIN, Role.CUSTOMER)
   @UseGuards(RolesGuard)
   findAvailable() {
     return this.packagesService.findAvailable();
@@ -96,10 +97,23 @@ export class PackagesController {
   // PATCH /api/v1/packages/:id/accept
   // Driver: accept delivery booking request
   @Patch(':id/accept')
-  @Roles(Role.DRIVER, Role.ADMIN)
+  @Roles(Role.DRIVER, Role.ADMIN, Role.CUSTOMER)
   @UseGuards(RolesGuard)
   accept(@Param('id') id: string, @CurrentUser() user: any) {
     return this.packagesService.acceptPackage(id, user._id);
+  }
+
+  // PATCH /api/v1/packages/:id/status
+  // Driver: update delivery status (PICKED_UP, IN_TRANSIT, DELIVERED, FAILED)
+  @Patch(':id/status')
+  @Roles(Role.DRIVER, Role.ADMIN, Role.CUSTOMER)
+  @UseGuards(RolesGuard)
+  updateStatus(
+    @Param('id') id: string,
+    @Body() dto: UpdatePackageStatusDto,
+    @CurrentUser() user: any,
+  ) {
+    return this.packagesService.updateStatus(id, dto.status, user);
   }
 
   // ─────────────────────────────────────────────────────────────────────────────

@@ -5,6 +5,7 @@ import { User, UserDocument } from '../../shared/schemas/user.schema';
 import { Role } from '../../common/enum/role.enum';
 import { normalisePhone } from 'src/common/utils/phone.util';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import { UpdateDriverStatusDto } from './dto/update-driver-status.dto';
 import { CloudinaryService } from '../database/cloudinary/cloudinary.service';
 import { BadRequestException, ConflictException } from '@nestjs/common';
 
@@ -103,6 +104,35 @@ export class UsersService {
     return { message: 'Avatar removed successfully.' };
   }
 
+  async updateDriverStatus(userId: string, dto: UpdateDriverStatusDto) {
+    const user = await this.userModel.findById(userId);
+    if (!user) throw new NotFoundException('User not found');
+    if (user.role !== Role.DRIVER) {
+      throw new BadRequestException('User is not a driver.');
+    }
+
+    if (!user.driverProfile) {
+      user.driverProfile = {
+        vehicleType: 'MOTORCYCLE',
+        balance: 0,
+        isOnline: false,
+        currentLocation: null,
+      };
+    }
+
+    if (dto.isOnline !== undefined) {
+      user.driverProfile.isOnline = dto.isOnline;
+    }
+    if (dto.currentLocation !== undefined) {
+      user.driverProfile.currentLocation = dto.currentLocation;
+    }
+
+    // Force Mongoose to mark subdocument as modified
+    user.markModified('driverProfile');
+    const updated = await user.save();
+    return this.sanitize(updated);
+  }
+
   sanitize(user: UserDocument) {
     return {
       _id: user._id,
@@ -112,6 +142,7 @@ export class UsersService {
       role: user.role,
       isActive: user.isActive,
       avatarUrl: user.avatarUrl ?? null,
+      driverProfile: user.driverProfile ?? null,
       createdAt: (user as any).createdAt,
       updatedAt: (user as any).updatedAt,
     };

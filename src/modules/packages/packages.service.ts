@@ -147,6 +147,7 @@ export class PackagesService {
 
     if (
       user.role !== Role.ADMIN &&
+      (pkg.customerId as any)._id?.toString() !== user._id.toString() &&
       pkg.customerId.toString() !== user._id.toString()
     ) {
       throw new ForbiddenException('You do not have access to this package.');
@@ -293,6 +294,44 @@ export class PackagesService {
       this.logger.error(`FastAPI Acceptance Notification Error: ${err.message}`)
     );
 
+    return pkg;
+  }
+
+  async updateStatus(packageId: string, status: BookingStatus, user: RequestUser): Promise<PackageDocument> {
+    const pkg = await this.packageModel.findById(packageId);
+    if (!pkg) throw new NotFoundException('Package not found');
+
+    if (user.role !== Role.ADMIN && (!pkg.driverId || pkg.driverId.toString() !== user._id.toString())) {
+      throw new ForbiddenException('You are not authorized to update this package.');
+    }
+
+    const allowedStatuses = [
+      BookingStatus.PICKED_UP,
+      BookingStatus.IN_TRANSIT,
+      BookingStatus.DELIVERED,
+      BookingStatus.FAILED,
+    ];
+
+    if (!allowedStatuses.includes(status)) {
+      throw new BadRequestException(`Status ${status} is not allowed for driver updates.`);
+    }
+
+    pkg.status = status;
+    await pkg.save();
+
+    // If delivered, update driver balance with 95% of estimatedPrice (5% commission)
+    if (status === BookingStatus.DELIVERED && pkg.driverId) {
+      const driver = await this.userModel.findById(pkg.driverId);
+      if (driver && driver.driverProfile) {
+        const estimatedPrice = pkg.estimatedPrice || 0;
+        driver.driverProfile.balance += estimatedPrice * 0.95;
+        driver.markModified('driverProfile');
+        await driver.save();
+        this.logger.log(`Added ${estimatedPrice * 0.95} to driver ${driver._id} balance.`);
+      }
+    }
+
+    this.logger.log(`Package ${pkg.trackingNumber} status updated to ${status}`);
     return pkg;
   }
 
