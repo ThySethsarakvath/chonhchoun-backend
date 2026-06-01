@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document } from 'mongoose';
+import { Document, Schema as MongooseSchema, Types } from 'mongoose';
 import { Role } from '../../common/enum/role.enum';
 
 export type UserDocument = User & Document;
@@ -34,9 +34,12 @@ export class User {
 
   @Prop({ type: String, default: null })
   avatarUrl: string | null;
- 
+
   @Prop({ type: String, default: null })
   avatarPublicId: string | null;
+
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Branch', default: null })
+  branchId?: Types.ObjectId | null;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);

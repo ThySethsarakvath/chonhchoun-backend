@@ -1,103 +1,338 @@
-import { Injectable, InternalServerErrorException, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+  BadRequestException,
+  Logger,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { ConfigService } from '@nestjs/config';
-import { Package, PackageDocument } from './schemas/package.schema';
-import { CreatePackageDto } from './dto/create-package.dto';
+
+import {
+  Package,
+  PackageDocument,
+} from '../../shared/schemas/package.schema';
+import { User, UserDocument } from '../../shared/schemas/user.schema';
+import { CreateBookingDto } from './dto/create-booking.dto';
+import { UpdateBookingDto, CancelBookingDto } from './dto/update-booking.dto';
+import { QueryBookingDto } from './dto/query-booking.dto';
+import { BookingStatus, PaymentStatus } from '../../common/enum/package.enum';
+import { haversineKm, estimatePrice } from '../../common/utils/pricing.util';
+import { generateTrackingNumber } from '../../common/utils/tracking.util';
+import { normalisePhone } from '../../common/utils/phone.util';
+import { Role } from '../../common/enum/role.enum';
+
+// Shape of req.user injected by JwtStrategy
+interface RequestUser {
+  _id: Types.ObjectId;
+  name: string;
+  email: string;
+  phone: string;
+  role: Role;
+}
 
 @Injectable()
 export class PackagesService {
+  private readonly logger = new Logger(PackagesService.name);
+
   constructor(
-    @InjectModel(Package.name) private packageModel: Model<PackageDocument>,
-    private configService: ConfigService,
+    @InjectModel(Package.name)
+    private readonly packageModel: Model<PackageDocument>,
+    @InjectModel(User.name)
+    private readonly userModel: Model<UserDocument>,
+    private readonly configService: ConfigService,
   ) {}
 
-  async create(createPackageDto: CreatePackageDto, senderId: any): Promise<Package> {
-    try {
-      console.log('Creating package for user:', senderId);
-      console.log('Package Data:', createPackageDto);
-
-      // Ensure senderId is a valid ObjectId
-      const senderObjectId = typeof senderId === 'string' ? new Types.ObjectId(senderId) : senderId;
-
-      const newPackage = new this.packageModel({
-        ...createPackageDto,
-        senderId: senderObjectId,
-      });
-
-      const savedPackage = await newPackage.save();
-      console.log('Package saved successfully:', savedPackage._id);
-
-      // Trigger AI mapping in background safely
-      this.triggerAutoMapping(savedPackage).catch(err => 
-        console.error('AutoMapping Trigger Error (Async):', err.message)
-      );
-
-      return savedPackage;
-    } catch (error) {
-      console.error('Package Creation Error:', error);
-      if (error.name === 'ValidationError') {
-        throw new BadRequestException(`Validation Failed: ${error.message}`);
-      }
-      throw new InternalServerErrorException(`Failed to create package: ${error.message}`);
+  async create(dto: CreateBookingDto, user: RequestUser): Promise<PackageDocument> {
+    const dbUser = await this.userModel.findById(user._id);
+    if (!dbUser) {
+      throw new NotFoundException('User not found.');
     }
-  }
 
-  async findOne(id: string): Promise<Package> {
-    const pkg = await this.packageModel.findById(id).populate('senderId', 'fullName phone').populate('driverId', 'fullName phone').exec();
-    if (!pkg) throw new NotFoundException('Package not found');
-    return pkg;
-  }
+    const pickupPhone = dto.pickup.phone
+      ? normalisePhone(dto.pickup.phone)
+      : normalisePhone(dbUser.phone);
 
-  async findAll(): Promise<Package[]> {
-    return this.packageModel.find().populate('senderId', 'fullName phone').exec();
-  }
+    if (!pickupPhone) {
+      throw new BadRequestException(
+        'Pickup phone is required. Please provide a phone number or ensure your user profile has a phone number.',
+      );
+    }
 
-  async findMyPackages(userId: any): Promise<Package[]> {
-    const userObjectId = typeof userId === 'string' ? new Types.ObjectId(userId) : userId;
-    return this.packageModel.find({ senderId: userObjectId }).sort({ createdAt: -1 }).exec();
-  }
+    const pickup = {
+      ...dto.pickup,
+      contactName: dto.pickup.contactName?.trim() || dbUser.name,
+      phone: pickupPhone,
+    };
 
-  async findAvailable(): Promise<Package[]> {
-    return this.packageModel.find({ status: 'searching' }).exec();
-  }
+    const dropoff = {
+      ...dto.dropoff,
+      phone: normalisePhone(dto.dropoff.phone),
+    };
 
-  async acceptPackage(packageId: string, driverId: any): Promise<Package> {
-    const pkg = await this.packageModel.findById(packageId);
-    if (!pkg) throw new NotFoundException('Package not found');
+    const distanceKm = haversineKm(
+      pickup.latitude,
+      pickup.longitude,
+      dropoff.latitude,
+      dropoff.longitude,
+    );
+    const estimatedPrice = estimatePrice(distanceKm, dto.vehicleType);
 
-    const driverObjectId = typeof driverId === 'string' ? new Types.ObjectId(driverId) : driverId;
+    if (dto.scheduledAt) {
+      const scheduled = new Date(dto.scheduledAt);
+      if (scheduled <= new Date()) {
+        throw new BadRequestException('scheduledAt must be a future date and time.');
+      }
+    }
 
-    pkg.status = 'accepted';
-    pkg.driverId = driverObjectId;
-    await pkg.save();
+    const pkg = await this.packageModel.create({
+      trackingNumber: generateTrackingNumber(),
+      customerId: user._id,
+      vehicleType: dto.vehicleType,
+      package: {
+        name: dto.package.name,
+        type: dto.package.type,
+        quantity: dto.package.quantity,
+        weightKg: dto.package.weightKg ?? null,
+        images: dto.package.images ?? [],
+        note: dto.package.note ?? null,
+      },
+      pickup,
+      dropoff,
+      payment: {
+        payer: dto.payment.payer,
+        method: dto.payment.method,
+        status: PaymentStatus.PENDING,
+        amount: estimatedPrice,
+      },
+      status: BookingStatus.PENDING,
+      scheduledAt: dto.scheduledAt ? new Date(dto.scheduledAt) : null,
+      estimatedDistanceKm: Math.round(distanceKm * 100) / 100,
+      estimatedPrice,
+      driverId: null,
+    });
 
-    // Notify FastAPI
-    this.notifyAcceptance(pkg, driverId.toString()).catch(err => 
-      console.error('FastAPI Acceptance Notification Error:', err.message)
+    this.logger.log(
+      `Package created: ${pkg.trackingNumber} by user ${user._id}`,
+    );
+    this.logger.log(`Created booking ID: ${pkg._id}`);
+
+    // Trigger AI mapping in background safely
+    this.triggerAutoMapping(pkg).catch(err => 
+      this.logger.error(`AutoMapping Trigger Error (Async): ${err.message}`)
     );
 
     return pkg;
   }
 
-  async cancelPackage(packageId: string, userId: any): Promise<Package> {
+  async findMyBookings(userId: string, query: QueryBookingDto) {
+    return this.paginatedQuery({ customerId: new Types.ObjectId(userId) }, query);
+  }
+
+  async findOne(id: string, user: RequestUser): Promise<PackageDocument> {
+    const pkg = await this.packageModel
+      .findById(id)
+      .populate('customerId', 'name email phone')
+      .exec();
+
+    if (!pkg) throw new NotFoundException('Package not found.');
+
+    if (
+      user.role !== Role.ADMIN &&
+      pkg.customerId.toString() !== user._id.toString()
+    ) {
+      throw new ForbiddenException('You do not have access to this package.');
+    }
+
+    return pkg;
+  }
+
+  async findByTrackingNumber(trackingNumber: string) {
+    const pkg = await this.packageModel
+      .findOne({ trackingNumber: trackingNumber.toUpperCase() })
+      .select('-payment.amount -customerId')
+      .exec();
+
+    if (!pkg) throw new NotFoundException('Tracking number not found.');
+    return pkg;
+  }
+
+  async findAll(query: QueryBookingDto) {
+    return this.paginatedQuery({}, query);
+  }
+
+  async update(
+    id: string,
+    dto: UpdateBookingDto,
+    user: RequestUser,
+  ): Promise<PackageDocument> {
+    const pkg = await this.packageModel.findById(id);
+    if (!pkg) throw new NotFoundException('Package not found.');
+
+    this.assertOwner(pkg, user);
+    this.assertPending(pkg, 'edit');
+
+    const pickup = dto.pickup
+      ? {
+          ...pkg.pickup,
+          ...dto.pickup,
+          contactName: dto.pickup.contactName?.trim() || pkg.pickup.contactName,
+          phone: dto.pickup.phone
+            ? normalisePhone(dto.pickup.phone)
+            : pkg.pickup.phone,
+        }
+      : pkg.pickup;
+
+    const dropoff = dto.dropoff
+      ? {
+          ...pkg.dropoff,
+          ...dto.dropoff,
+          phone: normalisePhone(dto.dropoff.phone),
+        }
+      : pkg.dropoff;
+
+    const vehicleType = dto.vehicleType ?? pkg.vehicleType;
+
+    let distanceKm = pkg.estimatedDistanceKm;
+    let estimatedPrice = pkg.estimatedPrice;
+
+    if (dto.pickup || dto.dropoff || dto.vehicleType) {
+      distanceKm = haversineKm(
+        pickup.latitude,
+        pickup.longitude,
+        dropoff.latitude,
+        dropoff.longitude,
+      );
+      estimatedPrice = estimatePrice(distanceKm, vehicleType);
+    }
+
+    if (dto.scheduledAt) {
+      const scheduled = new Date(dto.scheduledAt);
+      if (scheduled <= new Date()) {
+        throw new BadRequestException('scheduledAt must be a future date.');
+      }
+    }
+
+    // Update document by modifying properties directly and saving
+    // This ensures nested objects like package, pickup, dropoff are properly merged
+    if (dto.vehicleType) pkg.vehicleType = dto.vehicleType;
+    if (dto.package) pkg.package = { ...pkg.package, ...dto.package };
+    if (dto.pickup) pkg.pickup = pickup;
+    if (dto.dropoff) pkg.dropoff = dropoff;
+    if (dto.payment) pkg.payment = { ...pkg.payment, ...dto.payment, amount: estimatedPrice };
+    if (dto.scheduledAt !== undefined) {
+      pkg.scheduledAt = dto.scheduledAt ? new Date(dto.scheduledAt) : null;
+    }
+    pkg.estimatedDistanceKm = Math.round(distanceKm! * 100) / 100;
+    pkg.estimatedPrice = estimatedPrice;
+
+    const updated = await pkg.save();
+
+    this.logger.log(`Package updated: ${pkg.trackingNumber}`);
+    return updated;
+  }
+
+  async cancel(
+    id: string,
+    dto: CancelBookingDto,
+    user: RequestUser,
+  ): Promise<PackageDocument> {
+    const pkg = await this.packageModel.findById(id);
+    if (!pkg) throw new NotFoundException('Package not found.');
+
+    if (user.role !== Role.ADMIN) this.assertOwner(pkg, user);
+    this.assertPending(pkg, 'cancel');
+
+    const cancelled = await this.packageModel
+      .findByIdAndUpdate(
+        id,
+        {
+          status: BookingStatus.CANCELLED,
+          cancellationReason: dto.reason ?? null,
+          cancelledAt: new Date(),
+        },
+        { new: true },
+      )
+      .exec();
+
+    this.logger.log(`Package cancelled: ${pkg.trackingNumber}`);
+    return cancelled!;
+  }
+
+  async remove(id: string): Promise<{ message: string }> {
+    const pkg = await this.packageModel.findByIdAndDelete(id);
+    if (!pkg) throw new NotFoundException('Package not found.');
+    this.logger.log(`Package hard-deleted: ${pkg.trackingNumber}`);
+    return { message: 'Package deleted.' };
+  }
+
+  async findAvailable(): Promise<PackageDocument[]> {
+    return this.packageModel.find({ status: BookingStatus.PENDING }).exec();
+  }
+
+  async acceptPackage(packageId: string, driverId: any): Promise<PackageDocument> {
     const pkg = await this.packageModel.findById(packageId);
     if (!pkg) throw new NotFoundException('Package not found');
 
-    const userObjectId = typeof userId === 'string' ? new Types.ObjectId(userId) : userId;
-    
-    if (pkg.senderId.toString() !== userObjectId.toString()) {
-      throw new BadRequestException('You do not have permission to cancel this package');
-    }
+    const driverObjectId = typeof driverId === 'string' ? new Types.ObjectId(driverId) : driverId;
 
-    if (pkg.status === 'delivered') {
-      throw new BadRequestException('Cannot cancel a delivered package');
-    }
-
-    pkg.status = 'canceled';
+    pkg.status = BookingStatus.ACCEPTED;
+    pkg.driverId = driverObjectId;
     await pkg.save();
 
+    // Notify FastAPI
+    this.notifyAcceptance(pkg, driverId.toString()).catch(err => 
+      this.logger.error(`FastAPI Acceptance Notification Error: ${err.message}`)
+    );
+
     return pkg;
+  }
+
+  private assertOwner(pkg: PackageDocument, user: RequestUser) {
+    if (pkg.customerId.toString() !== user._id.toString()) {
+      throw new ForbiddenException('You do not have access to this package.');
+    }
+  }
+
+  private assertPending(pkg: PackageDocument, action: string) {
+    if (pkg.status !== BookingStatus.PENDING) {
+      throw new BadRequestException(
+        `Cannot ${action} a package with status "${pkg.status}".`,
+      );
+    }
+  }
+
+  private async paginatedQuery(filter: object, query: QueryBookingDto) {
+    const { page = 1, limit = 10, status, vehicleType, trackingNumber } = query;
+    const skip = (page - 1) * limit;
+
+    const where: Record<string, any> = { ...filter };
+    if (status) where.status = status;
+    if (vehicleType) where.vehicleType = vehicleType;
+    if (trackingNumber) where.trackingNumber = trackingNumber.toUpperCase();
+
+    const [data, total] = await Promise.all([
+      this.packageModel
+        .find(where)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate('customerId', 'name email phone avatarUrl')
+        .exec(),
+      this.packageModel.countDocuments(where),
+    ]);
+
+    return {
+      data,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+        hasNext: page * limit < total,
+      },
+    };
   }
 
   private async triggerAutoMapping(pkg: PackageDocument) {
@@ -105,7 +340,7 @@ export class PackagesService {
     const apiKey = this.configService.get<string>('ETA_API_KEY');
 
     if (!url || !apiKey) {
-      console.warn('FastAPI URL or API Key missing, skipping automapping');
+      this.logger.warn('FastAPI URL or API Key missing, skipping automapping');
       return;
     }
 
@@ -113,10 +348,10 @@ export class PackagesService {
       accept_time: new Date().toISOString(),
       stops: [{
         order_id: pkg._id.toString(),
-        accept_gps_lat: pkg.pickupLat,
-        accept_gps_lng: pkg.pickupLng,
-        delivery_gps_lat: pkg.dropoffLat,
-        delivery_gps_lng: pkg.dropoffLng,
+        accept_gps_lat: pkg.pickup.latitude,
+        accept_gps_lng: pkg.pickup.longitude,
+        delivery_gps_lat: pkg.dropoff.latitude,
+        delivery_gps_lng: pkg.dropoff.longitude,
         accept_time: new Date().toISOString()
       }],
       drivers: [] 
@@ -134,14 +369,14 @@ export class PackagesService {
       
       if (!response.ok) {
         const errText = await response.text();
-        console.error(`FastAPI Error (${response.status}):`, errText);
+        this.logger.error(`FastAPI Error (${response.status}): ${errText}`);
         return;
       }
 
       const result = await response.json();
-      console.log('FastAPI AutoMapping Result:', result);
-    } catch (error) {
-      console.error('Failed to call FastAPI AutoMapping:', error.message);
+      this.logger.log(`FastAPI AutoMapping Result: ${JSON.stringify(result)}`);
+    } catch (error: any) {
+      this.logger.error(`Failed to call FastAPI AutoMapping: ${error.message}`);
     }
   }
 
@@ -166,8 +401,8 @@ export class PackagesService {
         },
         body: JSON.stringify(payload)
       });
-    } catch (error) {
-      console.error('Failed to notify FastAPI about acceptance:', error.message);
+    } catch (error: any) {
+      this.logger.error(`Failed to notify FastAPI about acceptance: ${error.message}`);
     }
   }
 }
