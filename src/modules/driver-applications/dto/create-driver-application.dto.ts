@@ -1,10 +1,13 @@
 import {
   IsEmail,
+  IsEnum,
   IsMongoId,
+  IsOptional,
   IsString,
   Matches,
   MinLength,
 } from 'class-validator';
+import { VehicleType } from '../../../common/enum/package.enum';
 
 export class CreateDriverApplicationDto {
   @IsString()
@@ -36,4 +39,8 @@ export class CreateDriverApplicationDto {
 
   @IsMongoId()
   branchId: string;
+
+  @IsOptional()
+  @IsEnum(VehicleType)
+  vehicleType?: VehicleType;
 }

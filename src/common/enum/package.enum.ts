@@ -1,7 +1,7 @@
 export enum VehicleType {
   MOTORCYCLE = 'MOTORCYCLE',
   CAR = 'CAR',
-  TRUCK_SMALL = 'TRUCK_SMALL',
+  TRUCK = 'TRUCK',
   TRUCK_LARGE = 'TRUCK_LARGE',
 }
 

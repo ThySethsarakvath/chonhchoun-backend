@@ -25,7 +25,7 @@ function toRad(deg: number): number {
 const PRICING: Record<VehicleType, { base: number; perKm: number }> = {
   [VehicleType.MOTORCYCLE]: { base: 1.0, perKm: 0.3 },
   [VehicleType.CAR]:        { base: 2.0, perKm: 0.5 },
-  [VehicleType.TRUCK_SMALL]:{ base: 4.0, perKm: 0.8 },
+  [VehicleType.TRUCK]:      { base: 4.0, perKm: 0.8 },
   [VehicleType.TRUCK_LARGE]:{ base: 8.0, perKm: 1.2 },
 };
 

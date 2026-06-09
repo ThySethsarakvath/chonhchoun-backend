@@ -38,6 +38,13 @@ export class RegistrationService {
     private readonly authService: AuthService,
   ) {}
 
+  private normalizeVehicleType(
+    vehicleType: string | null | undefined,
+  ): string | null {
+    if (!vehicleType) return null;
+    return vehicleType === 'TRUCK_SMALL' ? 'TRUCK' : vehicleType;
+  }
+
   async initiate(dto: InitiateRegisterDto): Promise<{ message: string }> {
     const phone = normalisePhone(dto.phone); // always store as +855XXXXXXXXX
 
@@ -199,6 +206,8 @@ export class RegistrationService {
       email: user.email,
       phone: user.phone,
       role: user.role,
+      vehicleType: this.normalizeVehicleType(user.vehicleType),
+      assignedVehicleCode: user.assignedVehicleCode ?? null,
       isActive: user.isActive,
       avatarUrl: user.avatarUrl,
       createdAt: (user as any).createdAt,

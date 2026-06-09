@@ -1,6 +1,7 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Schema as MongooseSchema, Types } from 'mongoose';
 import { Role } from '../../common/enum/role.enum';
+import { VehicleType } from '../../common/enum/package.enum';
 
 export type UserDocument = User & Document;
 
@@ -17,6 +18,12 @@ export class User {
 
   @Prop({ required: true, enum: Role, default: Role.CUSTOMER })
   role: Role;
+
+  @Prop({ type: String, enum: VehicleType, default: null })
+  vehicleType: VehicleType | null;
+
+  @Prop({ type: String, trim: true, default: null })
+  assignedVehicleCode: string | null;
 
   @Prop({
     required: true,

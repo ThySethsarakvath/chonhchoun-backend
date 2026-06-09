@@ -5,6 +5,7 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  Patch,
   Post,
   UploadedFiles,
   UseGuards,
@@ -16,6 +17,8 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/decorators/roles.decorators';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/role.guard';
+import { UpdateDriverVehicleTypeDto } from '../users/dto/update-driver-vehicle-type.dto';
+import { ApproveDriverApplicationDto } from './dto/approve-driver-application.dto';
 import { CreateDriverApplicationDto } from './dto/create-driver-application.dto';
 import { RejectDriverApplicationDto } from './dto/reject-driver-application.dto';
 import { DriverApplicationsService } from './driver-applications.service';
@@ -70,11 +73,35 @@ export class DriverApplicationsController {
     );
   }
 
+  @Patch('branch-owner/drivers/:id/vehicle-type')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.BRANCH_OWNER)
+  updateDriverVehicleTypeForBranchOwner(
+    @Param('id') id: string,
+    @CurrentUser() user: any,
+    @Body() dto: UpdateDriverVehicleTypeDto,
+  ) {
+    return this.driverApplicationsService.updateDriverVehicleTypeForBranchOwner(
+      id,
+      user._id.toString(),
+      dto.vehicleType,
+      dto.assignedVehicleCode,
+    );
+  }
+
   @Post(':id/approve')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.BRANCH_OWNER)
-  approve(@Param('id') id: string, @CurrentUser() user: any) {
-    return this.driverApplicationsService.approve(id, user._id.toString());
+  approve(
+    @Param('id') id: string,
+    @CurrentUser() user: any,
+    @Body() dto: ApproveDriverApplicationDto,
+  ) {
+    return this.driverApplicationsService.approve(
+      id,
+      user._id.toString(),
+      dto,
+    );
   }
 
   @Post(':id/reject')

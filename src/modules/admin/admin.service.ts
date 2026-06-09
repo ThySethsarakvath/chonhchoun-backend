@@ -20,6 +20,13 @@ export class AdminService {
     private readonly adminActivityService: AdminActivityService,
   ) {}
 
+  private normalizeVehicleType(
+    vehicleType: string | null | undefined,
+  ): string | null {
+    if (!vehicleType) return null;
+    return vehicleType === 'TRUCK_SMALL' ? 'TRUCK' : vehicleType;
+  }
+
   async findAllUsers() {
     const users = await this.userModel.find().sort({ createdAt: -1 }).exec();
     return users.map((user) => this.toAdminUser(user));
@@ -162,6 +169,8 @@ export class AdminService {
       email: user.email,
       phone: user.phone,
       role: user.role,
+      vehicleType: this.normalizeVehicleType(user.vehicleType),
+      assignedVehicleCode: user.assignedVehicleCode ?? null,
       isActive: user.isActive,
       avatarUrl: user.avatarUrl,
       createdAt: (user as any).createdAt,

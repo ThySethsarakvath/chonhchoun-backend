@@ -18,6 +18,8 @@ import { Branch, BranchDocument } from '../../shared/schemas/branch.schema';
 import { Role } from '../../common/enum/role.enum';
 import { CloudinaryService } from '../database/cloudinary/cloudinary.service';
 import { MailService } from '../mail/mail.service';
+import { VehicleType } from '../../common/enum/package.enum';
+import { ApproveDriverApplicationDto } from './dto/approve-driver-application.dto';
 import { CreateDriverApplicationDto } from './dto/create-driver-application.dto';
 import { RejectDriverApplicationDto } from './dto/reject-driver-application.dto';
 
@@ -34,6 +36,14 @@ export class DriverApplicationsService {
     private readonly mailService: MailService,
   ) {}
 
+  private normalizeVehicleType(
+    vehicleType: VehicleType | 'TRUCK_SMALL' | null | undefined,
+  ): VehicleType | null {
+    if (vehicleType == null) return null;
+    if (vehicleType === 'TRUCK_SMALL') return VehicleType.TRUCK;
+    return vehicleType;
+  }
+
   async create(
     dto: CreateDriverApplicationDto,
     files: {
@@ -45,6 +55,12 @@ export class DriverApplicationsService {
   ) {
     if (dto.password !== dto.confirmPassword) {
       throw new BadRequestException('Passwords do not match.');
+    }
+
+    if (dto.vehicleType != null && dto.vehicleType !== VehicleType.MOTORCYCLE) {
+      throw new BadRequestException(
+        'Driver applicants can only choose MOTORCYCLE. Branch vehicles are assigned during approval.',
+      );
     }
 
     const phone = normalisePhone(dto.phone);
@@ -59,10 +75,16 @@ export class DriverApplicationsService {
       files.nationalId?.[0],
       files.drivingLicense?.[0],
     ];
+    const isMotorcycleApplication = dto.vehicleType === VehicleType.MOTORCYCLE;
 
-    if (!avatarFile || !cvFile || !nationalIdFile || !drivingLicenseFile) {
+    if (!avatarFile || !cvFile || !nationalIdFile) {
       throw new BadRequestException(
-        'Avatar, CV, national ID, and driving license files are required.',
+        'Avatar, CV, and national ID files are required.',
+      );
+    }
+    if (!isMotorcycleApplication && !drivingLicenseFile) {
+      throw new BadRequestException(
+        'Driving license is required for branch truck applications.',
       );
     }
 
@@ -94,10 +116,12 @@ export class DriverApplicationsService {
         nationalIdFile,
         'chonhchoun/driver-applications/national-id',
       ),
-      this.cloudinaryService.uploadDocument(
-        drivingLicenseFile,
-        'chonhchoun/driver-applications/driving-license',
-      ),
+      drivingLicenseFile
+        ? this.cloudinaryService.uploadDocument(
+            drivingLicenseFile,
+            'chonhchoun/driver-applications/driving-license',
+          )
+        : Promise.resolve(null),
     ]);
 
     const application = await this.applicationModel.create({
@@ -106,6 +130,7 @@ export class DriverApplicationsService {
       phone,
       passwordHash,
       branchId: branch._id,
+      vehicleType: dto.vehicleType ?? null,
       avatar: {
         ...avatar,
         originalName: avatarFile.originalname,
@@ -118,10 +143,13 @@ export class DriverApplicationsService {
         ...nationalId,
         originalName: nationalIdFile.originalname,
       },
-      drivingLicense: {
-        ...drivingLicense,
-        originalName: drivingLicenseFile.originalname,
-      },
+      drivingLicense:
+        drivingLicense && drivingLicenseFile
+          ? {
+              ...drivingLicense,
+              originalName: drivingLicenseFile.originalname,
+            }
+          : null,
       status: DriverApplicationStatus.PENDING,
     });
 
@@ -164,13 +192,64 @@ export class DriverApplicationsService {
       name: driver.name,
       email: driver.email,
       phone: driver.phone,
+      vehicleType: this.normalizeVehicleType(driver.vehicleType),
+      assignedVehicleCode: driver.assignedVehicleCode ?? null,
       avatarUrl: driver.avatarUrl ?? null,
       isActive: driver.isActive,
       createdAt: (driver as any).createdAt,
     }));
   }
 
-  async approve(applicationId: string, reviewerId: string) {
+  async updateDriverVehicleTypeForBranchOwner(
+    driverId: string,
+    ownerId: string,
+    vehicleType: VehicleType,
+    assignedVehicleCode?: string,
+  ) {
+    const branch = await this.branchModel.findOne({ ownerId }).exec();
+    if (!branch) {
+      throw new NotFoundException('No branch assigned to this branch owner.');
+    }
+
+    const driver = await this.userModel.findById(driverId).exec();
+    if (!driver) {
+      throw new NotFoundException('Driver not found.');
+    }
+
+    if (driver.role !== Role.DRIVER) {
+      throw new BadRequestException(
+        'Vehicle type can only be assigned to driver accounts.',
+      );
+    }
+
+    if (driver.branchId?.toString() !== branch._id.toString()) {
+      throw new BadRequestException(
+        'This driver does not belong to your branch.',
+      );
+    }
+
+    driver.vehicleType = vehicleType;
+    driver.assignedVehicleCode = assignedVehicleCode?.trim() || null;
+    await driver.save();
+
+    return {
+      _id: driver._id,
+      name: driver.name,
+      email: driver.email,
+      phone: driver.phone,
+      vehicleType: this.normalizeVehicleType(driver.vehicleType),
+      assignedVehicleCode: driver.assignedVehicleCode ?? null,
+      avatarUrl: driver.avatarUrl ?? null,
+      isActive: driver.isActive,
+      createdAt: (driver as any).createdAt,
+    };
+  }
+
+  async approve(
+    applicationId: string,
+    reviewerId: string,
+    dto: ApproveDriverApplicationDto,
+  ) {
     const application = await this.applicationModel
       .findById(applicationId)
       .select('+passwordHash')
@@ -199,18 +278,51 @@ export class DriverApplicationsService {
       );
     }
 
+    let finalVehicleType: VehicleType | null = null;
+    let finalAssignedVehicleCode: string | null = null;
+    if (application.vehicleType === VehicleType.MOTORCYCLE) {
+      if (dto.vehicleType != null) {
+        throw new BadRequestException(
+          'Motorcycle applications should be approved without assigning a branch vehicle.',
+        );
+      }
+      if (dto.assignedVehicleCode?.trim()) {
+        throw new BadRequestException(
+          'Motorcycle applications should not receive a branch vehicle code.',
+        );
+      }
+      finalVehicleType = VehicleType.MOTORCYCLE;
+    } else {
+      if (dto.vehicleType != null && dto.vehicleType !== VehicleType.TRUCK) {
+        throw new BadRequestException(
+          'Branch-provided vehicle approvals currently support truck assignment only.',
+        );
+      }
+      finalAssignedVehicleCode = dto.assignedVehicleCode?.trim() || null;
+      if (!finalAssignedVehicleCode) {
+        throw new BadRequestException(
+          'A truck code is required before approving this driver.',
+        );
+      }
+      finalVehicleType = VehicleType.TRUCK;
+    }
+
     const driverUser = await this.userModel.create({
       name: application.name,
       email: application.email,
       phone: application.phone,
       password: application.passwordHash,
       role: Role.DRIVER,
+      vehicleType: finalVehicleType,
+      assignedVehicleCode: finalAssignedVehicleCode,
       isActive: true,
       avatarUrl: application.avatar.url,
       avatarPublicId: application.avatar.publicId,
       branchId: application.branchId,
     });
 
+    application.vehicleType = finalVehicleType;
+    application.assignedVehicleCode = finalAssignedVehicleCode;
     application.status = DriverApplicationStatus.APPROVED;
     application.reviewedBy = new Types.ObjectId(reviewerId);
     application.reviewedAt = new Date();
@@ -260,6 +372,8 @@ export class DriverApplicationsService {
       name: application.name,
       email: application.email,
       phone: application.phone,
+      vehicleType: this.normalizeVehicleType(application.vehicleType),
+      assignedVehicleCode: application.assignedVehicleCode ?? null,
       status: application.status,
       branch:
         application.branchId && typeof application.branchId === 'object'

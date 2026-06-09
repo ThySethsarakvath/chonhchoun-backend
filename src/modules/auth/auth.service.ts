@@ -23,6 +23,13 @@ export class AuthService {
     private readonly redisService: RedisService,
   ) {}
 
+  private normalizeVehicleType(
+    vehicleType: string | null | undefined,
+  ): string | null {
+    if (!vehicleType) return null;
+    return vehicleType === 'TRUCK_SMALL' ? 'TRUCK' : vehicleType;
+  }
+
   // ── Login ─────────────────────────────────────────────────────────────────────
   async login(dto: LoginDto) {
     const user = await this.userModel
@@ -41,6 +48,8 @@ export class AuthService {
       name: user.name,
       email: user.email,
       role: user.role,
+      vehicleType: this.normalizeVehicleType(user.vehicleType) ?? '',
+      assignedVehicleCode: user.assignedVehicleCode ?? '',
     });
 
     return { user: this.sanitizeUser(user), ...tokens };
@@ -125,6 +134,8 @@ export class AuthService {
       name: user.name,
       email: user.email,
       role: user.role,
+      vehicleType: this.normalizeVehicleType(user.vehicleType),
+      assignedVehicleCode: user.assignedVehicleCode ?? null,
       isActive: user.isActive,
       createdAt: (user as any).createdAt,
     };

@@ -13,6 +13,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { UsersService } from './users.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import { UpdateDriverVehicleTypeDto } from './dto/update-driver-vehicle-type.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/role.guard';
 import { Roles } from '../auth/decorators/roles.decorators';
@@ -94,5 +95,16 @@ export class UsersController {
   @Roles(Role.ADMIN)
   deactivate(@Param('id') id: string) {
     return this.usersService.deactivate(id);
+  }
+
+  // PATCH /api/v1/users/:id/vehicle-type
+  @Patch(':id/vehicle-type')
+  @UseGuards(RolesGuard)
+  @Roles(Role.ADMIN)
+  updateDriverVehicleType(
+    @Param('id') id: string,
+    @Body() dto: UpdateDriverVehicleTypeDto,
+  ) {
+    return this.usersService.updateDriverVehicleType(id, dto.vehicleType);
   }
 }
