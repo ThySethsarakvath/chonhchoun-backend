@@ -71,6 +71,7 @@ export class UsersController {
   removeAvatar(@CurrentUser() user: any) {
     return this.usersService.removeAvatar(user._id.toString());
   }
+
   
   // Admin only
   // GET /api/v1/users

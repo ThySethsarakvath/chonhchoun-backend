@@ -100,7 +100,7 @@ export class UsersService {
       avatarUrl: null,
       avatarPublicId: null,
     });
- 
+ 
     return { message: 'Avatar removed successfully.' };
   }
 

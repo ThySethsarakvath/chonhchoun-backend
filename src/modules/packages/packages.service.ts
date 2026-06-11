@@ -133,6 +133,13 @@ export class PackagesService {
     return this.paginatedQuery({ customerId: new Types.ObjectId(userId) }, query);
   }
 
+  async findDriverBookings(driverId: string, query: QueryBookingDto) {
+    if (!Types.ObjectId.isValid(driverId)) {
+      throw new BadRequestException('Invalid driver ID format.');
+    }
+    return this.paginatedQuery({ driverId: new Types.ObjectId(driverId) }, query);
+  }
+
   async findOne(id: string, user: RequestUser): Promise<PackageDocument> {
     if (!Types.ObjectId.isValid(id)) {
       throw new BadRequestException('Invalid package ID format.');
@@ -141,15 +148,18 @@ export class PackagesService {
     const pkg = await this.packageModel
       .findById(id)
       .populate('customerId', 'name email phone')
+      .populate('driverId', 'name email phone isOnline currentLocation')
       .exec();
 
     if (!pkg) throw new NotFoundException('Package not found.');
 
-    if (
-      user.role !== Role.ADMIN &&
-      (pkg.customerId as any)._id?.toString() !== user._id.toString() &&
-      pkg.customerId.toString() !== user._id.toString()
-    ) {
+    const customerIdStr = (pkg.customerId as any)._id?.toString() || pkg.customerId.toString();
+    const isCustomerOwner = customerIdStr === user._id.toString();
+    const isAssignedDriver =
+      pkg.driverId &&
+      ((pkg.driverId as any)._id?.toString() || pkg.driverId.toString()) === user._id.toString();
+
+    if (user.role !== Role.ADMIN && !isCustomerOwner && !isAssignedDriver) {
       throw new ForbiddenException('You do not have access to this package.');
     }
 
@@ -276,7 +286,10 @@ export class PackagesService {
   }
 
   async findAvailable(): Promise<PackageDocument[]> {
-    return this.packageModel.find({ status: BookingStatus.PENDING }).exec();
+    return this.packageModel
+      .find({ status: BookingStatus.PENDING })
+      .populate('customerId', 'name email phone avatarUrl')
+      .exec();
   }
 
   async acceptPackage(packageId: string, driverId: any): Promise<PackageDocument> {
@@ -365,6 +378,7 @@ export class PackagesService {
         .skip(skip)
         .limit(limit)
         .populate('customerId', 'name email phone avatarUrl')
+        .populate('driverId', 'name email phone isOnline currentLocation')
         .exec(),
       this.packageModel.countDocuments(where),
     ]);

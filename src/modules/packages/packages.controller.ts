@@ -52,6 +52,15 @@ export class PackagesController {
     return this.packagesService.findByTrackingNumber(trackingNumber);
   }
 
+  // GET /api/v1/packages/available
+  // Driver: find available packages to deliver
+  @Get('available')
+  @Roles(Role.DRIVER, Role.ADMIN)
+  @UseGuards(RolesGuard)
+  findAvailable() {
+    return this.packagesService.findAvailable();
+  }
+
   // GET /api/v1/packages/:id
   // Get single booking — customer sees own, admin sees all
   @Get(':id')
@@ -85,15 +94,6 @@ export class PackagesController {
   // DRIVER routes
   // ─────────────────────────────────────────────────────────────────────────────
 
-  // GET /api/v1/packages/available
-  // Driver: find available packages to deliver
-  @Get('available')
-  @Roles(Role.DRIVER, Role.ADMIN, Role.CUSTOMER)
-  @UseGuards(RolesGuard)
-  findAvailable() {
-    return this.packagesService.findAvailable();
-  }
-
   // PATCH /api/v1/packages/:id/accept
   // Driver: accept delivery booking request
   @Patch(':id/accept')
@@ -101,6 +101,15 @@ export class PackagesController {
   @UseGuards(RolesGuard)
   accept(@Param('id') id: string, @CurrentUser() user: any) {
     return this.packagesService.acceptPackage(id, user._id);
+  }
+
+  // GET /api/v1/packages/driver/my
+  // Driver sees their assigned bookings
+  @Get('driver/my')
+  @Roles(Role.DRIVER, Role.ADMIN)
+  @UseGuards(RolesGuard)
+  getDriverBookings(@CurrentUser() user: any, @Query() query: QueryBookingDto) {
+    return this.packagesService.findDriverBookings(user._id.toString(), query);
   }
 
   // PATCH /api/v1/packages/:id/status
