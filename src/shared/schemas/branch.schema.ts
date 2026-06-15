@@ -1,67 +1,27 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document, Schema as MongooseSchema, Types } from 'mongoose';
-import { BranchStatus } from '../../common/enum/branch-status.enum';
+import { Document } from 'mongoose';
 
 export type BranchDocument = Branch & Document;
 
 @Schema({ timestamps: true })
 export class Branch {
-  @Prop({ required: true })
+  @Prop({ required: true, trim: true })
   name: string;
 
-  @Prop()
-  branchNumber?: number;
+  @Prop({ required: true, trim: true })
+  address: string;
 
-  @Prop({ trim: true })
-  code?: string;
+  @Prop({ required: true })
+  latitude: number;
 
-  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User' })
-  ownerId?: Types.ObjectId;
+  @Prop({ required: true })
+  longitude: number;
 
-  @Prop({ trim: true })
-  phone?: string;
-
-  @Prop()
-  address?: string;
-
-  @Prop()
-  description?: string;
-
-  @Prop()
-  branchOwnerSince?: Date;
-
-  @Prop({
-    type: {
-      lat: { type: Number },
-      lng: { type: Number },
-    },
-    _id: false,
-  })
-  location?: { lat: number; lng: number };
-
-  @Prop()
-  latitude?: number;
-
-  @Prop()
-  longitude?: number;
-
-  @Prop({
-    type: String,
-    enum: BranchStatus,
-    default: BranchStatus.ACTIVE,
-  })
-  status: BranchStatus;
-
-  @Prop({ default: 'assets/images/branch_partner_logo.png' })
-  logoUrl?: string;
-
-  @Prop({ default: true })
-  isVisibleOnMap: boolean;
+  @Prop({ required: true, trim: true })
+  phone: string;
 
   @Prop({ default: true })
   isActive: boolean;
 }
 
 export const BranchSchema = SchemaFactory.createForClass(Branch);
-BranchSchema.index({ code: 1 }, { unique: true, sparse: true });
-BranchSchema.index({ ownerId: 1 }, { unique: true, sparse: true });

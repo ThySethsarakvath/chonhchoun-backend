@@ -1,24 +1,19 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
+import { WarehousePackage, WarehousePackageSchema } from '../../shared/schemas/warehouse-package.schema';
 import { PackagesService } from './packages.service';
 import { PackagesController } from './packages.controller';
-import {
-  Package,
-  PackageSchema,
-} from '../../shared/schemas/package.schema';
-import { User, UserSchema } from '../../shared/schemas/user.schema';
 import { AuthModule } from '../auth/auth.module';
 
 @Module({
   imports: [
     MongooseModule.forFeature([
-      { name: Package.name, schema: PackageSchema },
-      { name: User.name, schema: UserSchema },
+      { name: WarehousePackage.name, schema: WarehousePackageSchema },
     ]),
     AuthModule,
   ],
   controllers: [PackagesController],
   providers: [PackagesService],
-  exports: [PackagesService],
+  exports: [PackagesService, MongooseModule],
 })
 export class PackagesModule {}

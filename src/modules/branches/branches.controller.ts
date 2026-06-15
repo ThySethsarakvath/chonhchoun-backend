@@ -1,30 +1,36 @@
-import { Controller, Get, NotFoundException, UseGuards } from '@nestjs/common';
-import { Role } from '../../common/enum/role.enum';
-import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { Roles } from '../auth/decorators/roles.decorators';
+import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { BranchesService } from './branches.service';
+import { CreateBranchDto, UpdateBranchDto } from './dto/create-branch.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/role.guard';
-import { BranchesService } from './branches.service';
+import { Roles } from '../auth/decorators/roles.decorators';
+import { Role } from '../../common/enum/role.enum';
 
 @Controller('branches')
+// @UseGuards(JwtAuthGuard)
 export class BranchesController {
-  constructor(private readonly branchesService: BranchesService) {}
+  constructor(private readonly svc: BranchesService) {}
 
-  @Get('me')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.BRANCH_OWNER)
-  async getMyBranch(@CurrentUser() user: any) {
-    const branch = await this.branchesService.findDetailedByOwnerId(user._id);
+  @Get()
+  findAll() { return this.svc.findAll(); }
 
-    if (!branch) {
-      throw new NotFoundException('No branch assigned to this branch owner.');
-    }
+  @Get(':id')
+  findOne(@Param('id') id: string) { return this.svc.findOne(id); }
 
-    return branch;
+  @Post()
+  // @UseGuards(RolesGuard)
+  // @Roles(Role.ADMIN)
+  create(@Body() dto: CreateBranchDto) { return this.svc.create(dto); }
+
+  @Patch(':id')
+  @UseGuards(RolesGuard)
+  @Roles(Role.ADMIN)
+  update(@Param('id') id: string, @Body() dto: UpdateBranchDto) {
+    return this.svc.update(id, dto);
   }
 
-  @Get('map')
-  getMapBranches() {
-    return this.branchesService.findVisibleOnMap();
-  }
+  @Delete(':id')
+  @UseGuards(RolesGuard)
+  @Roles(Role.ADMIN)
+  remove(@Param('id') id: string) { return this.svc.remove(id); }
 }

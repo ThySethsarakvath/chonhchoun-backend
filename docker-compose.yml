@@ -1,6 +1,7 @@
 version: '3.9'
 
 services:
+  # ── NestJS API ──────────────────────────────────────────────────────────────
   api:
     build:
       context: .
@@ -21,12 +22,25 @@ services:
       REDIS_PASSWORD: ${REDIS_PASSWORD}
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-7d}
+      OSRM_URL: http://osrm:5000
+      SOLVER_URL: http://solver:8000
+      MQTT_HOST: mqtt://mosquitto:1883
+      MQTT_CLIENT_ID: chonhchoun_api
     depends_on:
       redis:
         condition: service_healthy
+      osrm:
+        condition: service_started
+      solver:
+        condition: service_healthy
+      mosquitto:
+        condition: service_started
     networks:
       - chonhchoun_network
 
+  # ── Redis ───────────────────────────────────────────────────────────────────
   redis:
     image: redis:7.2-alpine
     container_name: chonhchoun_redis
@@ -44,9 +58,72 @@ services:
     networks:
       - chonhchoun_network
 
+  # ── Mosquitto MQTT Broker ───────────────────────────────────────────────────
+  mosquitto:
+    image: eclipse-mosquitto:2.0
+    container_name: chonhchoun_mosquitto
+    restart: unless-stopped
+    ports:
+      - '1883:1883' # MQTT TCP — NestJS backend + native Flutter clients
+      - '9001:9001' # MQTT WebSocket — browser/Flutter web clients
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_logs:/mosquitto/log
+    healthcheck:
+      test: [ 'CMD', '/bin/sh', '-c', 'test -S /mosquitto/config/mosquitto.conf || exit 1' ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    networks:
+      - chonhchoun_network
+
+  # ── OSRM — OpenStreetMap road routing engine ────────────────────────────────
+  # On FIRST run you must pre-process the Cambodia OSM data.
+  # See README for the one-time setup commands.
+  osrm:
+    image: osrm/osrm-backend:latest
+    container_name: chonhchoun_osrm
+    restart: unless-stopped
+    ports:
+      - '5000:5000'
+    volumes:
+      - ./osrm-data:/data
+    command: osrm-routed --algorithm mld --max-table-size 1000000 /data/cambodia-latest.osrm
+    # healthcheck:
+    #   test: ['CMD', 'wget', '-qO-', 'http://localhost:5000/health']
+    #   interval: 15s
+    #   timeout: 10s
+    #   retries: 5
+    #   start_period: 120s
+    networks:
+      - chonhchoun_network
+
+  # ── Python VRP Solver — OR-Tools via FastAPI ────────────────────────────────
+  solver:
+    build:
+      context: ./solver
+      dockerfile: Dockerfile
+    container_name: chonhchoun_solver
+    restart: unless-stopped
+    ports:
+      - '8000:8000'
+    environment:
+      WORKERS: 2
+    healthcheck:
+      test: [ 'CMD', 'wget', '-qO-', 'http://localhost:8000/health' ]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - chonhchoun_network
+
 volumes:
   redis_data:
-
+  mosquitto_data:
+  mosquitto_logs:
 
 networks:
   chonhchoun_network:

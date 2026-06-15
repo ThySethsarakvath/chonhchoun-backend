@@ -2,9 +2,7 @@ export default () => ({
   port: parseInt(process.env.PORT ?? '3000', 10),
   nodeEnv: process.env.NODE_ENV ?? 'development',
 
-  mongodb: {
-    uri: process.env.MONGODB_URI,
-  },
+  mongodb: { uri: process.env.MONGODB_URI },
 
   redis: {
     host: process.env.REDIS_HOST ?? 'localhost',
@@ -13,10 +11,9 @@ export default () => ({
   },
 
   jwt: {
-    secret: process.env.JWT_SECRET ?? 'dev_secret_replace_in_production',
+    secret: process.env.JWT_SECRET ?? 'dev_secret',
     expiresIn: process.env.JWT_EXPIRES_IN ?? '15m',
-    refreshSecret:
-      process.env.JWT_REFRESH_SECRET ?? 'dev_refresh_secret_replace_in_production',
+    refreshSecret: process.env.JWT_REFRESH_SECRET ?? 'dev_refresh_secret',
     refreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN ?? '7d',
   },
 
@@ -33,5 +30,19 @@ export default () => ({
     cloudName: process.env.CLOUDINARY_CLOUD_NAME,
     apiKey: process.env.CLOUDINARY_API_KEY,
     apiSecret: process.env.CLOUDINARY_API_SECRET,
+  },
+
+  // ── New: external services ──────────────────────────────────────────────────
+  osrm: {
+    url: process.env.OSRM_URL ?? 'http://localhost:5000',
+  },
+
+  solver: {
+    url: process.env.SOLVER_URL ?? 'http://localhost:8000',
+  },
+
+  mqtt: {
+    host: process.env.MQTT_HOST ?? 'mqtt://localhost:1883',
+    clientId: process.env.MQTT_CLIENT_ID ?? 'chonhchoun_api',
   },
 });
