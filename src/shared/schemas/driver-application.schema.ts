@@ -42,6 +42,18 @@ export class DriverApplication {
   @Prop({ type: String, trim: true, default: null })
   assignedVehicleCode: string | null;
 
+  @Prop({ type: String, trim: true, default: null })
+  plateNumber?: string | null;
+
+  @Prop({ type: Number, default: null })
+  maxWeightKg?: number | null;
+
+  @Prop({ type: Number, default: null })
+  maxVolumeM3?: number | null;
+
+  @Prop({ type: Number, default: null })
+  maxPackageCount?: number | null;
+
   @Prop({ type: UploadedAssetSchema, required: true })
   avatar: UploadedAsset;
 

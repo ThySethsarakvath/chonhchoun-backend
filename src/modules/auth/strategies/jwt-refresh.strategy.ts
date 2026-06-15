@@ -5,7 +5,10 @@ import { ExtractJwt, Strategy } from 'passport-jwt';
 import { Request } from 'express';
 
 @Injectable()
-export class JwtRefreshStrategy extends PassportStrategy(Strategy, 'jwt-refresh') {
+export class JwtRefreshStrategy extends PassportStrategy(
+  Strategy,
+  'jwt-refresh',
+) {
   constructor(private readonly configService: ConfigService) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
@@ -27,8 +30,8 @@ export class JwtRefreshStrategy extends PassportStrategy(Strategy, 'jwt-refresh'
       sub: payload.sub,
       email: payload.email,
       role: payload.role,
-      jti: payload.jti,   // ← the tokenId stored as Redis key suffix
-      refreshToken,       // ← the raw token for bcrypt.compare()
+      jti: payload.jti, // ← the tokenId stored as Redis key suffix
+      refreshToken, // ← the raw token for bcrypt.compare()
     };
   }
 }

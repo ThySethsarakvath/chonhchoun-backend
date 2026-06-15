@@ -41,9 +41,12 @@ export class LocationDto {
   contactName: string;
 
   @IsString()
-  @Matches(/^(\+855|0)(1[0-9]|2[0-9]|3[0-9]|6[0-9]|7[0-9]|8[0-9]|9[0-9])\d{6,7}$/, {
-    message: 'Phone must be a valid Cambodian number',
-  })
+  @Matches(
+    /^(\+855|0)(1[0-9]|2[0-9]|3[0-9]|6[0-9]|7[0-9]|8[0-9]|9[0-9])\d{6,7}$/,
+    {
+      message: 'Phone must be a valid Cambodian number',
+    },
+  )
   phone: string;
 }
 
@@ -70,9 +73,12 @@ export class PickupDto {
   // If omitted, filled from req.user in the service
   @IsOptional()
   @IsString()
-  @Matches(/^(\+855|0)(1[0-9]|2[0-9]|3[0-9]|6[0-9]|7[0-9]|8[0-9]|9[0-9])\d{6,7}$/, {
-    message: 'Phone must be a valid Cambodian number',
-  })
+  @Matches(
+    /^(\+855|0)(1[0-9]|2[0-9]|3[0-9]|6[0-9]|7[0-9]|8[0-9]|9[0-9])\d{6,7}$/,
+    {
+      message: 'Phone must be a valid Cambodian number',
+    },
+  )
   phone?: string;
 }
 

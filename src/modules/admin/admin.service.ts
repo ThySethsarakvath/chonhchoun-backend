@@ -32,7 +32,11 @@ export class AdminService {
     return users.map((user) => this.toAdminUser(user));
   }
 
-  async upgradeBranchOwner(userId: string, dto: UpgradeBranchOwnerDto, actor?: any) {
+  async upgradeBranchOwner(
+    userId: string,
+    dto: UpgradeBranchOwnerDto,
+    actor?: any,
+  ) {
     if (!Types.ObjectId.isValid(userId)) {
       throw new BadRequestException('Invalid user id.');
     }
@@ -116,12 +120,12 @@ export class AdminService {
       actor,
       targetUser: { _id: user._id as any, name: user.name },
       branch: branch
-          ? {
-              _id: branch._id as any,
-              name: branch.name,
-              branchNumber: branch.branchNumber,
-            }
-          : undefined,
+        ? {
+            _id: branch._id as any,
+            name: branch.name,
+            branchNumber: branch.branchNumber,
+          }
+        : undefined,
       details: `${actor?.name ?? 'Admin'} downgraded ${user.name} back to customer.`,
     });
 
@@ -154,7 +158,7 @@ export class AdminService {
       action: 'branch_created',
       actor,
       branch: {
-        _id: branch?._id as any,
+        _id: branch?._id,
         name: branch?.name,
         branchNumber: branch?.branchNumber,
       },

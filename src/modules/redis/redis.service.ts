@@ -3,28 +3,25 @@ import Redis from 'ioredis';
 import { REDIS_CLIENT } from './redis.constants';
 
 export const TTL = {
-  REFRESH_TOKEN: 60 * 60 * 24 * 7,    // 7 days
-  ACCESS_TOKEN_BLACKLIST: 60 * 15,     // 15 minutes (matches JWT expiry)
-  OTP: 60 * 5,                         // 5 minutes
-  OTP_ATTEMPTS: 60 * 15,              // 15 minutes lockout window
-  RATE_LIMIT: 60,                      // 1 minute
-  USER_SESSION: 60 * 60 * 24,         // 24 hours
-  VERIFICATION_TOKEN: 60 * 60 * 24,   // 24 hours
+  REFRESH_TOKEN: 60 * 60 * 24 * 7, // 7 days
+  ACCESS_TOKEN_BLACKLIST: 60 * 15, // 15 minutes (matches JWT expiry)
+  OTP: 60 * 5, // 5 minutes
+  OTP_ATTEMPTS: 60 * 15, // 15 minutes lockout window
+  RATE_LIMIT: 60, // 1 minute
+  USER_SESSION: 60 * 60 * 24, // 24 hours
+  VERIFICATION_TOKEN: 60 * 60 * 24, // 24 hours
 } as const;
 
 export const RedisKey = {
   refreshToken: (userId: string, tokenId: string) =>
     `refresh_token:${userId}:${tokenId}`,
-  blacklistedToken: (jti: string) =>
-    `blacklist:${jti}`,
-  otp: (identifier: string, purpose: string) =>
-    `otp:${purpose}:${identifier}`,
+  blacklistedToken: (jti: string) => `blacklist:${jti}`,
+  otp: (identifier: string, purpose: string) => `otp:${purpose}:${identifier}`,
   otpAttempts: (identifier: string, purpose: string) =>
     `otp_attempts:${purpose}:${identifier}`,
   rateLimit: (identifier: string, action: string) =>
     `rate_limit:${action}:${identifier}`,
-  userSession: (userId: string) =>
-    `session:${userId}`,
+  userSession: (userId: string) => `session:${userId}`,
   verificationToken: (token: string, purpose: string) =>
     `verify:${purpose}:${token}`,
 };
@@ -98,7 +95,7 @@ export class RedisService implements OnModuleDestroy {
     pipeline.incr(key);
     pipeline.expire(key, ttlSeconds);
     const results = await pipeline.exec();
-    return results?.[0]?.[1] as number ?? 0;
+    return (results?.[0]?.[1] as number) ?? 0;
   }
 
   async hset(key: string, data: Record<string, string>): Promise<void> {
@@ -146,7 +143,10 @@ export class RedisService implements OnModuleDestroy {
     await this.expire(`refresh_tokens:${userId}`, TTL.REFRESH_TOKEN);
   }
 
-  async getRefreshToken(userId: string, tokenId: string): Promise<string | null> {
+  async getRefreshToken(
+    userId: string,
+    tokenId: string,
+  ): Promise<string | null> {
     return this.get(RedisKey.refreshToken(userId, tokenId));
   }
 
@@ -160,7 +160,9 @@ export class RedisService implements OnModuleDestroy {
     const keys = tokenIds.map((id) => RedisKey.refreshToken(userId, id));
     if (keys.length > 0) await this.del(...keys);
     await this.del(`refresh_tokens:${userId}`);
-    this.logger.debug(`Revoked ${tokenIds.length} refresh tokens for user ${userId}`);
+    this.logger.debug(
+      `Revoked ${tokenIds.length} refresh tokens for user ${userId}`,
+    );
   }
 
   // Access Token blacklist (for logout before expiry)
@@ -179,7 +181,7 @@ export class RedisService implements OnModuleDestroy {
   //  OTP
   async saveOtp(
     identifier: string, // email or phone
-    purpose: string,    // 'email_verify' | 'password_reset' | 'login_2fa'
+    purpose: string, // 'email_verify' | 'password_reset' | 'login_2fa'
     otp: string,
   ): Promise<void> {
     await this.set(RedisKey.otp(identifier, purpose), otp, TTL.OTP);
@@ -215,7 +217,7 @@ export class RedisService implements OnModuleDestroy {
   // ── Rate limiting ────────────────────────────────────────────────────────────
   async checkRateLimit(
     identifier: string, // IP or userId
-    action: string,     // 'login' | 'register' | 'otp_request'
+    action: string, // 'login' | 'register' | 'otp_request'
     maxAttempts: number,
     windowSeconds: number,
   ): Promise<{ allowed: boolean; remaining: number; resetIn: number }> {

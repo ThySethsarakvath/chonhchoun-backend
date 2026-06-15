@@ -17,10 +17,14 @@ export class DatabaseService implements OnApplicationBootstrap {
     const state = this.connection.readyState;
 
     if (state === ConnectionStates.connected) {
-      this.logger.log(`✅ MongoDB connected — database: "${this.connection.name}"`);
+      this.logger.log(
+        `✅ MongoDB connected — database: "${this.connection.name}"`,
+      );
       this.logger.log(`✅ Host: ${this.connection.host}`);
     } else {
-      this.logger.error(`❌ MongoDB not connected — state: ${ConnectionStates[state]}`);
+      this.logger.error(
+        `❌ MongoDB not connected — state: ${ConnectionStates[state]}`,
+      );
     }
   }
 

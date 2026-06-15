@@ -22,7 +22,7 @@ export class CreateDriverApplicationDto {
     /^(\+855|0)(1[0-9]|2[0-9]|3[0-9]|6[0-9]|7[0-9]|8[0-9]|9[0-9])\d{6,7}$/,
     {
       message:
-          'Phone number must be a valid Cambodian number. Accepted formats: 012345678 or +85512345678',
+        'Phone number must be a valid Cambodian number. Accepted formats: 012345678 or +85512345678',
     },
   )
   phone: string;
@@ -43,4 +43,8 @@ export class CreateDriverApplicationDto {
   @IsOptional()
   @IsEnum(VehicleType)
   vehicleType?: VehicleType;
+
+  @IsOptional()
+  @IsString()
+  plateNumber?: string;
 }
