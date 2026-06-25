@@ -7,7 +7,12 @@ import {
   MaxLength,
   ValidateNested,
 } from 'class-validator';
-import { PackageDetailDto, LocationDto, PickupDto, PaymentDto } from './create-booking.dto';
+import {
+  PackageDetailDto,
+  LocationDto,
+  PickupDto,
+  PaymentDto,
+} from './create-booking.dto';
 import { VehicleType } from '../../../common/enum/package.enum';
 
 export class UpdateBookingDto {

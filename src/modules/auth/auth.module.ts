@@ -16,9 +16,7 @@ import { JwtRefreshStrategy } from './strategies/jwt-refresh.strategy';
     // own secret so we support both access and refresh secrets cleanly.
     JwtModule.register({}),
 
-    MongooseModule.forFeature([
-      { name: User.name, schema: UserSchema },
-    ]),
+    MongooseModule.forFeature([{ name: User.name, schema: UserSchema }]),
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtStrategy, JwtRefreshStrategy],

@@ -42,7 +42,9 @@ export class UpdateBranchDto {
 
   @IsOptional()
   @Transform(({ value }) =>
-    value === null || value === undefined || value == '' ? undefined : Number(value),
+    value === null || value === undefined || value == ''
+      ? undefined
+      : Number(value),
   )
   @IsNumber()
   @Min(-90)
@@ -51,7 +53,9 @@ export class UpdateBranchDto {
 
   @IsOptional()
   @Transform(({ value }) =>
-    value === null || value === undefined || value == '' ? undefined : Number(value),
+    value === null || value === undefined || value == ''
+      ? undefined
+      : Number(value),
   )
   @IsNumber()
   @Min(-180)

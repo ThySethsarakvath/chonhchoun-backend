@@ -15,6 +15,7 @@ import { Role } from '../../common/enum/role.enum';
 import { normalisePhone } from '../../common/utils/phone.util';
 import { LoginDto } from './dto/login.dto';
 import { RedisService } from '../redis/redis.service';
+import { DriverAvailabilityStatus } from '../../common/enum/driver-availability-status.enum';
 
 @Injectable()
 export class AuthService {
@@ -24,6 +25,13 @@ export class AuthService {
     private readonly configService: ConfigService,
     private readonly redisService: RedisService,
   ) {}
+
+  private normalizeVehicleType(
+    vehicleType: string | null | undefined,
+  ): string | null {
+    if (!vehicleType) return null;
+    return vehicleType === 'TRUCK_SMALL' ? 'TRUCK' : vehicleType;
+  }
 
   // ── Login ─────────────────────────────────────────────────────────────────────
   async login(dto: LoginDto) {
@@ -35,7 +43,8 @@ export class AuthService {
     const match = await bcrypt.compare(dto.password, user.password);
     if (!match) throw new UnauthorizedException('Invalid credentials');
 
-    if (!user.isActive) throw new UnauthorizedException('Account is deactivated');
+    if (!user.isActive)
+      throw new UnauthorizedException('Account is deactivated');
 
     const tokens = await this.issueTokensForUser(user);
 
@@ -43,6 +52,10 @@ export class AuthService {
       name: user.name,
       email: user.email,
       role: user.role,
+      vehicleType: this.normalizeVehicleType(user.vehicleType) ?? '',
+      assignedVehicleCode: user.assignedVehicleCode ?? '',
+      availabilityStatus:
+        user.availabilityStatus ?? DriverAvailabilityStatus.OFFLINE,
     });
 
     return { user: this.sanitizeUser(user), ...tokens };
@@ -85,7 +98,8 @@ export class AuthService {
 
   async refresh(userId: string, rawRefreshToken: string, tokenId: string) {
     const storedHash = await this.redisService.getRefreshToken(userId, tokenId);
-    if (!storedHash) throw new UnauthorizedException('Refresh token expired or revoked');
+    if (!storedHash)
+      throw new UnauthorizedException('Refresh token expired or revoked');
 
     const isMatch = await bcrypt.compare(rawRefreshToken, storedHash);
     if (!isMatch) throw new UnauthorizedException('Invalid refresh token');
@@ -93,7 +107,8 @@ export class AuthService {
     await this.redisService.revokeRefreshToken(userId, tokenId);
 
     const user = await this.userModel.findById(userId);
-    if (!user || !user.isActive) throw new UnauthorizedException('User not found');
+    if (!user || !user.isActive)
+      throw new UnauthorizedException('User not found');
 
     return this.issueTokensForUser(user);
   }
@@ -119,7 +134,9 @@ export class AuthService {
   // ── PUBLIC: issue tokens for any user document ────────────────────────────────
   // Used by RegistrationService after account creation so token logic
   // lives in exactly one place.
-  async issueTokensForUser(user: UserDocument): Promise<{ accessToken: string; refreshToken: string }> {
+  async issueTokensForUser(
+    user: UserDocument,
+  ): Promise<{ accessToken: string; refreshToken: string }> {
     const tokenId = uuidv4();
     const payload = {
       sub: user._id.toString(),
@@ -143,7 +160,7 @@ export class AuthService {
     ]);
 
     // Store hashed refresh token in Redis
-    const decoded = this.jwtService.decode(refreshToken) as any;
+    const decoded = this.jwtService.decode(refreshToken);
     const refreshTokenId = decoded?.jti ?? uuidv4();
     const hashed = await bcrypt.hash(refreshToken, 10);
     await this.redisService.saveRefreshToken(
@@ -162,6 +179,18 @@ export class AuthService {
       name: user.name,
       email: user.email,
       role: user.role,
+      vehicleType: this.normalizeVehicleType(user.vehicleType),
+      assignedVehicleCode: user.assignedVehicleCode ?? null,
+      availabilityStatus:
+        user.availabilityStatus ?? DriverAvailabilityStatus.OFFLINE,
+      supportedVehicleTypes:
+        user.supportedVehicleTypes?.map((type) =>
+          this.normalizeVehicleType(type),
+        ) ?? [],
+      licenseNumber: user.licenseNumber ?? null,
+      licenseExpiry: user.licenseExpiry ?? null,
+      maxLoadWeightKg: user.maxLoadWeightKg ?? null,
+      maxPackageCount: user.maxPackageCount ?? null,
       isActive: user.isActive,
       createdAt: (user as any).createdAt,
     };

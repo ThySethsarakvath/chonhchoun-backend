@@ -1,6 +1,8 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Schema as MongooseSchema, Types } from 'mongoose';
+import { DriverAvailabilityStatus } from '../../common/enum/driver-availability-status.enum';
 import { Role } from '../../common/enum/role.enum';
+import { VehicleType } from '../../common/enum/package.enum';
 
 export type UserDocument = User & Document;
 
@@ -38,6 +40,34 @@ export class User {
 
   @Prop({ required: true, enum: Role, default: Role.CUSTOMER })
   role: Role;
+
+  @Prop({ type: String, enum: VehicleType, default: null })
+  vehicleType: VehicleType | null;
+
+  @Prop({ type: String, trim: true, default: null })
+  assignedVehicleCode: string | null;
+
+  @Prop({
+    type: String,
+    enum: DriverAvailabilityStatus,
+    default: DriverAvailabilityStatus.OFFLINE,
+  })
+  availabilityStatus: DriverAvailabilityStatus;
+
+  @Prop({ type: [String], enum: VehicleType, default: [] })
+  supportedVehicleTypes: VehicleType[];
+
+  @Prop({ type: String, trim: true, default: null })
+  licenseNumber?: string | null;
+
+  @Prop({ type: Date, default: null })
+  licenseExpiry?: Date | null;
+
+  @Prop({ type: Number, default: null })
+  maxLoadWeightKg?: number | null;
+
+  @Prop({ type: Number, default: null })
+  maxPackageCount?: number | null;
 
   @Prop({
     required: true,

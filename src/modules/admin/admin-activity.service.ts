@@ -10,7 +10,11 @@ interface LogActivityInput {
   action: string;
   actor?: { _id?: Types.ObjectId | string; name?: string };
   targetUser?: { _id?: Types.ObjectId | string; name?: string };
-  branch?: { _id?: Types.ObjectId | string; name?: string; branchNumber?: number };
+  branch?: {
+    _id?: Types.ObjectId | string;
+    name?: string;
+    branchNumber?: number;
+  };
   details?: string;
 }
 
@@ -36,6 +40,10 @@ export class AdminActivityService {
   }
 
   async findRecent(limit = 50) {
-    return this.adminActivityModel.find().sort({ createdAt: -1 }).limit(limit).exec();
+    return this.adminActivityModel
+      .find()
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .exec();
   }
 }

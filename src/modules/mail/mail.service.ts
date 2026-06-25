@@ -8,7 +8,11 @@ export class MailService {
   constructor(private readonly mailer: MailerService) {}
 
   // ── Password reset OTP ───────────────────────────────────────────────────────
-  async sendPasswordResetOtp(email: string, otp: string, name: string): Promise<void> {
+  async sendPasswordResetOtp(
+    email: string,
+    otp: string,
+    name: string,
+  ): Promise<void> {
     await this.mailer.sendMail({
       to: email,
       subject: 'Your password reset PIN — Chonhchoun',
@@ -17,14 +21,19 @@ export class MailService {
         otp,
         title: 'Reset your password',
         bodyText: 'Use the PIN below to reset your Chonhchoun password.',
-        footerText: "If you didn't request this, you can safely ignore this email.",
+        footerText:
+          "If you didn't request this, you can safely ignore this email.",
       }),
     });
     this.logger.log(`Password reset OTP sent to ${email}`);
   }
 
   // ── Registration OTP ─────────────────────────────────────────────────────────
-  async sendRegistrationOtp(email: string, otp: string, name: string): Promise<void> {
+  async sendRegistrationOtp(
+    email: string,
+    otp: string,
+    name: string,
+  ): Promise<void> {
     await this.mailer.sendMail({
       to: email,
       subject: 'Verify your email — Chonhchoun',
@@ -32,8 +41,10 @@ export class MailService {
         name,
         otp,
         title: 'Verify your email address',
-        bodyText: "Welcome to Chonhchoun! Use the PIN below to verify your email and complete your registration.",
-        footerText: "If you didn't create an account, you can safely ignore this email.",
+        bodyText:
+          'Welcome to Chonhchoun! Use the PIN below to verify your email and complete your registration.',
+        footerText:
+          "If you didn't create an account, you can safely ignore this email.",
       }),
     });
     this.logger.log(`Registration OTP sent to ${email}`);

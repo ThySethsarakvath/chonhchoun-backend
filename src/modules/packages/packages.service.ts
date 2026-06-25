@@ -9,10 +9,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { ConfigService } from '@nestjs/config';
 
-import {
-  Package,
-  PackageDocument,
-} from '../../shared/schemas/package.schema';
+import { Package, PackageDocument } from '../../shared/schemas/package.schema';
 import { User, UserDocument } from '../../shared/schemas/user.schema';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { UpdateBookingDto, CancelBookingDto } from './dto/update-booking.dto';
@@ -44,7 +41,10 @@ export class PackagesService {
     private readonly configService: ConfigService,
   ) {}
 
-  async create(dto: CreateBookingDto, user: RequestUser): Promise<PackageDocument> {
+  async create(
+    dto: CreateBookingDto,
+    user: RequestUser,
+  ): Promise<PackageDocument> {
     const dbUser = await this.userModel.findById(user._id);
     if (!dbUser) {
       throw new NotFoundException('User not found.');
@@ -82,7 +82,9 @@ export class PackagesService {
     if (dto.scheduledAt) {
       const scheduled = new Date(dto.scheduledAt);
       if (scheduled <= new Date()) {
-        throw new BadRequestException('scheduledAt must be a future date and time.');
+        throw new BadRequestException(
+          'scheduledAt must be a future date and time.',
+        );
       }
     }
 
@@ -130,7 +132,10 @@ export class PackagesService {
     if (!Types.ObjectId.isValid(userId)) {
       throw new BadRequestException('Invalid user ID format.');
     }
-    return this.paginatedQuery({ customerId: new Types.ObjectId(userId) }, query);
+    return this.paginatedQuery(
+      { customerId: new Types.ObjectId(userId) },
+      query,
+    );
   }
 
   async findDriverBookings(driverId: string, query: QueryBookingDto) {
@@ -238,7 +243,8 @@ export class PackagesService {
     if (dto.package) pkg.package = { ...pkg.package, ...dto.package };
     if (dto.pickup) pkg.pickup = pickup;
     if (dto.dropoff) pkg.dropoff = dropoff;
-    if (dto.payment) pkg.payment = { ...pkg.payment, ...dto.payment, amount: estimatedPrice };
+    if (dto.payment)
+      pkg.payment = { ...pkg.payment, ...dto.payment, amount: estimatedPrice };
     if (dto.scheduledAt !== undefined) {
       pkg.scheduledAt = dto.scheduledAt ? new Date(dto.scheduledAt) : null;
     }
@@ -465,4 +471,5 @@ export class PackagesService {
       this.logger.error(`Failed to notify FastAPI about acceptance: ${error.message}`);
     }
   }
+
 }

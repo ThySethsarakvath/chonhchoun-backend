@@ -20,12 +20,23 @@ export class AdminService {
     private readonly adminActivityService: AdminActivityService,
   ) {}
 
+  private normalizeVehicleType(
+    vehicleType: string | null | undefined,
+  ): string | null {
+    if (!vehicleType) return null;
+    return vehicleType === 'TRUCK_SMALL' ? 'TRUCK' : vehicleType;
+  }
+
   async findAllUsers() {
     const users = await this.userModel.find().sort({ createdAt: -1 }).exec();
     return users.map((user) => this.toAdminUser(user));
   }
 
-  async upgradeBranchOwner(userId: string, dto: UpgradeBranchOwnerDto, actor?: any) {
+  async upgradeBranchOwner(
+    userId: string,
+    dto: UpgradeBranchOwnerDto,
+    actor?: any,
+  ) {
     if (!Types.ObjectId.isValid(userId)) {
       throw new BadRequestException('Invalid user id.');
     }
@@ -109,12 +120,12 @@ export class AdminService {
       actor,
       targetUser: { _id: user._id as any, name: user.name },
       branch: branch
-          ? {
-              _id: branch._id as any,
-              name: branch.name,
-              branchNumber: branch.branchNumber,
-            }
-          : undefined,
+        ? {
+            _id: branch._id as any,
+            name: branch.name,
+            branchNumber: branch.branchNumber,
+          }
+        : undefined,
       details: `${actor?.name ?? 'Admin'} downgraded ${user.name} back to customer.`,
     });
 
@@ -147,7 +158,7 @@ export class AdminService {
       action: 'branch_created',
       actor,
       branch: {
-        _id: branch?._id as any,
+        _id: branch?._id,
         name: branch?.name,
         branchNumber: branch?.branchNumber,
       },
@@ -162,6 +173,8 @@ export class AdminService {
       email: user.email,
       phone: user.phone,
       role: user.role,
+      vehicleType: this.normalizeVehicleType(user.vehicleType),
+      assignedVehicleCode: user.assignedVehicleCode ?? null,
       isActive: user.isActive,
       avatarUrl: user.avatarUrl,
       createdAt: (user as any).createdAt,

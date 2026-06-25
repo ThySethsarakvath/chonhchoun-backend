@@ -91,18 +91,20 @@ export class AgenciesService implements OnModuleInit {
       ...(dto.code !== undefined ? { code: dto.code } : {}),
       ...(dto.address !== undefined ? { address: dto.address.trim() } : {}),
       ...(dto.phone !== undefined ? { phone: dto.phone.trim() } : {}),
-      ...(dto.description !== undefined ? { description: dto.description.trim() } : {}),
+      ...(dto.description !== undefined
+        ? { description: dto.description.trim() }
+        : {}),
       ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
       ...(hasLatitude && hasLongitude
-          ? {
-              latitude: dto.latitude,
-              longitude: dto.longitude,
-              location: {
-                lat: dto.latitude!,
-                lng: dto.longitude!,
-              },
-            }
-          : {}),
+        ? {
+            latitude: dto.latitude,
+            longitude: dto.longitude,
+            location: {
+              lat: dto.latitude!,
+              lng: dto.longitude!,
+            },
+          }
+        : {}),
     });
   }
 

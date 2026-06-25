@@ -65,7 +65,10 @@ export class OnboardingController {
       fileFilter: (_req, file, cb) => {
         const allowed = ['image/jpeg', 'image/png', 'image/webp'];
         if (!allowed.includes(file.mimetype)) {
-          return cb(new Error('Only JPEG, PNG, and WebP files are allowed'), false);
+          return cb(
+            new Error('Only JPEG, PNG, and WebP files are allowed'),
+            false,
+          );
         }
         cb(null, true);
       },

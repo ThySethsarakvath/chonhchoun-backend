@@ -33,5 +33,4 @@ export class AdminActivity {
   details?: string;
 }
 
-export const AdminActivitySchema =
-  SchemaFactory.createForClass(AdminActivity);
+export const AdminActivitySchema = SchemaFactory.createForClass(AdminActivity);
