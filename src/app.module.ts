@@ -17,6 +17,8 @@ import { AgenciesModule } from './modules/agencies/agencies.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { BranchesModule } from './modules/branches/branches.module';
 import { DriverApplicationsModule } from './modules/driver-applications/driver-applications.module';
+import { DriversModule } from './modules/drivers/drivers.module';
+import { ChatModule } from './modules/chat/chat.module';
 
 @Module({
   imports: [
@@ -39,6 +41,8 @@ import { DriverApplicationsModule } from './modules/driver-applications/driver-a
     BranchesModule,
     AdminModule,
     DriverApplicationsModule,
+    DriversModule,
+    ChatModule,
   ],
   controllers: [AppController],
   providers: [AppService],
