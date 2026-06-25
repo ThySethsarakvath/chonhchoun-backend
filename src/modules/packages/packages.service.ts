@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
+import { ConfigService } from '@nestjs/config';
 
 import {
   Package,
@@ -40,6 +41,7 @@ export class PackagesService {
     private readonly packageModel: Model<PackageDocument>,
     @InjectModel(User.name)
     private readonly userModel: Model<UserDocument>,
+    private readonly configService: ConfigService,
   ) {}
 
   async create(dto: CreateBookingDto, user: RequestUser): Promise<PackageDocument> {
@@ -115,25 +117,49 @@ export class PackagesService {
       `Package created: ${pkg.trackingNumber} by user ${user._id}`,
     );
     this.logger.log(`Created booking ID: ${pkg._id}`);
+
+    // Trigger AI mapping in background safely
+    this.triggerAutoMapping(pkg).catch(err => 
+      this.logger.error(`AutoMapping Trigger Error (Async): ${err.message}`)
+    );
+
     return pkg;
   }
 
   async findMyBookings(userId: string, query: QueryBookingDto) {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('Invalid user ID format.');
+    }
     return this.paginatedQuery({ customerId: new Types.ObjectId(userId) }, query);
   }
 
+  async findDriverBookings(driverId: string, query: QueryBookingDto) {
+    if (!Types.ObjectId.isValid(driverId)) {
+      throw new BadRequestException('Invalid driver ID format.');
+    }
+    return this.paginatedQuery({ driverId: new Types.ObjectId(driverId) }, query);
+  }
+
   async findOne(id: string, user: RequestUser): Promise<PackageDocument> {
+    if (!Types.ObjectId.isValid(id)) {
+      throw new BadRequestException('Invalid package ID format.');
+    }
+
     const pkg = await this.packageModel
       .findById(id)
       .populate('customerId', 'name email phone')
+      .populate('driverId', 'name email phone isOnline currentLocation')
       .exec();
 
     if (!pkg) throw new NotFoundException('Package not found.');
 
-    if (
-      user.role !== Role.ADMIN &&
-      pkg.customerId.toString() !== user._id.toString()
-    ) {
+    const customerIdStr = (pkg.customerId as any)._id?.toString() || pkg.customerId.toString();
+    const isCustomerOwner = customerIdStr === user._id.toString();
+    const isAssignedDriver =
+      pkg.driverId &&
+      ((pkg.driverId as any)._id?.toString() || pkg.driverId.toString()) === user._id.toString();
+
+    if (user.role !== Role.ADMIN && !isCustomerOwner && !isAssignedDriver) {
       throw new ForbiddenException('You do not have access to this package.');
     }
 
@@ -259,6 +285,69 @@ export class PackagesService {
     return { message: 'Package deleted.' };
   }
 
+  async findAvailable(): Promise<PackageDocument[]> {
+    return this.packageModel
+      .find({ status: BookingStatus.PENDING })
+      .populate('customerId', 'name email phone avatarUrl')
+      .exec();
+  }
+
+  async acceptPackage(packageId: string, driverId: any): Promise<PackageDocument> {
+    const pkg = await this.packageModel.findById(packageId);
+    if (!pkg) throw new NotFoundException('Package not found');
+
+    const driverObjectId = typeof driverId === 'string' ? new Types.ObjectId(driverId) : driverId;
+
+    pkg.status = BookingStatus.ACCEPTED;
+    pkg.driverId = driverObjectId;
+    await pkg.save();
+
+    // Notify FastAPI
+    this.notifyAcceptance(pkg, driverId.toString()).catch(err => 
+      this.logger.error(`FastAPI Acceptance Notification Error: ${err.message}`)
+    );
+
+    return pkg;
+  }
+
+  async updateStatus(packageId: string, status: BookingStatus, user: RequestUser): Promise<PackageDocument> {
+    const pkg = await this.packageModel.findById(packageId);
+    if (!pkg) throw new NotFoundException('Package not found');
+
+    if (user.role !== Role.ADMIN && (!pkg.driverId || pkg.driverId.toString() !== user._id.toString())) {
+      throw new ForbiddenException('You are not authorized to update this package.');
+    }
+
+    const allowedStatuses = [
+      BookingStatus.PICKED_UP,
+      BookingStatus.IN_TRANSIT,
+      BookingStatus.DELIVERED,
+      BookingStatus.FAILED,
+    ];
+
+    if (!allowedStatuses.includes(status)) {
+      throw new BadRequestException(`Status ${status} is not allowed for driver updates.`);
+    }
+
+    pkg.status = status;
+    await pkg.save();
+
+    // If delivered, update driver balance with 95% of estimatedPrice (5% commission)
+    if (status === BookingStatus.DELIVERED && pkg.driverId) {
+      const driver = await this.userModel.findById(pkg.driverId);
+      if (driver && driver.driverProfile) {
+        const estimatedPrice = pkg.estimatedPrice || 0;
+        driver.driverProfile.balance += estimatedPrice * 0.95;
+        driver.markModified('driverProfile');
+        await driver.save();
+        this.logger.log(`Added ${estimatedPrice * 0.95} to driver ${driver._id} balance.`);
+      }
+    }
+
+    this.logger.log(`Package ${pkg.trackingNumber} status updated to ${status}`);
+    return pkg;
+  }
+
   private assertOwner(pkg: PackageDocument, user: RequestUser) {
     if (pkg.customerId.toString() !== user._id.toString()) {
       throw new ForbiddenException('You do not have access to this package.');
@@ -289,6 +378,7 @@ export class PackagesService {
         .skip(skip)
         .limit(limit)
         .populate('customerId', 'name email phone avatarUrl')
+        .populate('driverId', 'name email phone isOnline currentLocation')
         .exec(),
       this.packageModel.countDocuments(where),
     ]);
@@ -303,5 +393,76 @@ export class PackagesService {
         hasNext: page * limit < total,
       },
     };
+  }
+
+  private async triggerAutoMapping(pkg: PackageDocument) {
+    const url = this.configService.get<string>('ETA_API_URL');
+    const apiKey = this.configService.get<string>('ETA_API_KEY');
+
+    if (!url || !apiKey) {
+      this.logger.warn('FastAPI URL or API Key missing, skipping automapping');
+      return;
+    }
+
+    const payload = {
+      accept_time: new Date().toISOString(),
+      stops: [{
+        order_id: pkg._id.toString(),
+        accept_gps_lat: pkg.pickup.latitude,
+        accept_gps_lng: pkg.pickup.longitude,
+        delivery_gps_lat: pkg.dropoff.latitude,
+        delivery_gps_lng: pkg.dropoff.longitude,
+        accept_time: new Date().toISOString()
+      }],
+      drivers: [] 
+    };
+
+    try {
+      const response = await fetch(`${url}/autoMaping`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify(payload)
+      });
+      
+      if (!response.ok) {
+        const errText = await response.text();
+        this.logger.error(`FastAPI Error (${response.status}): ${errText}`);
+        return;
+      }
+
+      const result = await response.json();
+      this.logger.log(`FastAPI AutoMapping Result: ${JSON.stringify(result)}`);
+    } catch (error: any) {
+      this.logger.error(`Failed to call FastAPI AutoMapping: ${error.message}`);
+    }
+  }
+
+  private async notifyAcceptance(pkg: PackageDocument, driverId: string) {
+    const url = this.configService.get<string>('ETA_API_URL');
+    const apiKey = this.configService.get<string>('ETA_API_KEY');
+
+    if (!url || !apiKey) return;
+
+    const payload = {
+      order_id: pkg._id.toString(),
+      driver_id: driverId,
+      timestamp: new Date().toISOString()
+    };
+
+    try {
+      await fetch(`${url}/accept_delivery`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify(payload)
+      });
+    } catch (error: any) {
+      this.logger.error(`Failed to notify FastAPI about acceptance: ${error.message}`);
+    }
   }
 }

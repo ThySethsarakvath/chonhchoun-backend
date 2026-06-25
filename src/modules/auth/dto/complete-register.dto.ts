@@ -24,4 +24,8 @@ export class CompleteRegisterDto {
   @IsEnum(Role)
   @IsOptional()
   role?: Role; // defaults to CUSTOMER if omitted
+
+  @IsString()
+  @IsOptional()
+  vehicleType?: string; // used if role is DRIVER
 }

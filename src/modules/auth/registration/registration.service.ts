@@ -137,9 +137,9 @@ export class RegistrationService {
   }
 
   async complete(dto: CompleteRegisterDto): Promise<any> {
-    if (dto.role != null && dto.role !== Role.CUSTOMER) {
+    if (dto.role != null && dto.role !== Role.CUSTOMER && dto.role !== Role.DRIVER) {
       throw new BadRequestException(
-        'Public registration can only create customer accounts.',
+        'Public registration can only create customer or driver accounts.',
       );
     }
 
@@ -178,6 +178,12 @@ export class RegistrationService {
       isActive: true,
       avatarUrl: null,
       avatarPublicId: null,
+      driverProfile: (dto.role === Role.DRIVER) ? {
+        vehicleType: dto.vehicleType ?? 'MOTORCYCLE',
+        balance: 0,
+        isOnline: false,
+        currentLocation: null,
+      } : null,
     });
 
     await this.redisService.deleteVerificationToken(dto.setupToken, SETUP_TOKEN_PURPOSE);
@@ -201,6 +207,7 @@ export class RegistrationService {
       role: user.role,
       isActive: user.isActive,
       avatarUrl: user.avatarUrl,
+      driverProfile: user.driverProfile ?? null,
       createdAt: (user as any).createdAt,
     };
   }

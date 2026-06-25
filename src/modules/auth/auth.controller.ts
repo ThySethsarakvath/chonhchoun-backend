@@ -23,6 +23,13 @@ import { Role } from '../../common/enum/role.enum';
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
+  // POST /api/v1/auth/driver-register (Bypass OTP for driver prototype)
+  @Post('driver-register')
+  @HttpCode(HttpStatus.OK)
+  driverRegister(@Body() dto: any) {
+    return this.authService.driverRegister(dto);
+  }
+
   // POST /api/v1/auth/login
   @Post('login')
   @HttpCode(HttpStatus.OK)

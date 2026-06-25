@@ -13,6 +13,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { UsersService } from './users.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import { UpdateDriverStatusDto } from './dto/update-driver-status.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/role.guard';
 import { Roles } from '../auth/decorators/roles.decorators';
@@ -33,6 +34,14 @@ export class UsersController {
   @Patch('me')
   updateProfile(@CurrentUser() user: any, @Body() dto: UpdateProfileDto) {
     return this.usersService.updateProfile(user._id.toString(), dto);
+  }
+
+  // PATCH /api/v1/users/me/driver-status — update driver status and location
+  @Patch('me/driver-status')
+  @UseGuards(RolesGuard)
+  @Roles(Role.DRIVER)
+  updateDriverStatus(@CurrentUser() user: any, @Body() dto: UpdateDriverStatusDto) {
+    return this.usersService.updateDriverStatus(user._id.toString(), dto);
   }
 
   // POST /api/v1/users/me/avatar — upload or replace profile picture
@@ -62,6 +71,7 @@ export class UsersController {
   removeAvatar(@CurrentUser() user: any) {
     return this.usersService.removeAvatar(user._id.toString());
   }
+
   
   // Admin only
   // GET /api/v1/users

@@ -12,6 +12,7 @@ import {
 import { PackagesService } from './packages.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { UpdateBookingDto, CancelBookingDto } from './dto/update-booking.dto';
+import { UpdatePackageStatusDto } from './dto/update-package-status.dto';
 import { QueryBookingDto } from './dto/query-booking.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/role.guard';
@@ -51,6 +52,15 @@ export class PackagesController {
     return this.packagesService.findByTrackingNumber(trackingNumber);
   }
 
+  // GET /api/v1/packages/available
+  // Driver: find available packages to deliver
+  @Get('available')
+  @Roles(Role.DRIVER, Role.ADMIN)
+  @UseGuards(RolesGuard)
+  findAvailable() {
+    return this.packagesService.findAvailable();
+  }
+
   // GET /api/v1/packages/:id
   // Get single booking — customer sees own, admin sees all
   @Get(':id')
@@ -79,6 +89,45 @@ export class PackagesController {
   ) {
     return this.packagesService.cancel(id, dto, user);
   }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // DRIVER routes
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  // PATCH /api/v1/packages/:id/accept
+  // Driver: accept delivery booking request
+  @Patch(':id/accept')
+  @Roles(Role.DRIVER, Role.ADMIN, Role.CUSTOMER)
+  @UseGuards(RolesGuard)
+  accept(@Param('id') id: string, @CurrentUser() user: any) {
+    return this.packagesService.acceptPackage(id, user._id);
+  }
+
+  // GET /api/v1/packages/driver/my
+  // Driver sees their assigned bookings
+  @Get('driver/my')
+  @Roles(Role.DRIVER, Role.ADMIN)
+  @UseGuards(RolesGuard)
+  getDriverBookings(@CurrentUser() user: any, @Query() query: QueryBookingDto) {
+    return this.packagesService.findDriverBookings(user._id.toString(), query);
+  }
+
+  // PATCH /api/v1/packages/:id/status
+  // Driver: update delivery status (PICKED_UP, IN_TRANSIT, DELIVERED, FAILED)
+  @Patch(':id/status')
+  @Roles(Role.DRIVER, Role.ADMIN, Role.CUSTOMER)
+  @UseGuards(RolesGuard)
+  updateStatus(
+    @Param('id') id: string,
+    @Body() dto: UpdatePackageStatusDto,
+    @CurrentUser() user: any,
+  ) {
+    return this.packagesService.updateStatus(id, dto.status, user);
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // ADMIN routes
+  // ─────────────────────────────────────────────────────────────────────────────
 
   // GET /api/v1/packages
   // Admin: list all bookings with filters and pagination

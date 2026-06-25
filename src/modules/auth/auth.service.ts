@@ -11,6 +11,8 @@ import * as bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 
 import { User, UserDocument } from '../../shared/schemas/user.schema';
+import { Role } from '../../common/enum/role.enum';
+import { normalisePhone } from '../../common/utils/phone.util';
 import { LoginDto } from './dto/login.dto';
 import { RedisService } from '../redis/redis.service';
 
@@ -34,6 +36,41 @@ export class AuthService {
     if (!match) throw new UnauthorizedException('Invalid credentials');
 
     if (!user.isActive) throw new UnauthorizedException('Account is deactivated');
+
+    const tokens = await this.issueTokensForUser(user);
+
+    await this.redisService.saveUserSession(user._id.toString(), {
+      name: user.name,
+      email: user.email,
+      role: user.role,
+    });
+
+    return { user: this.sanitizeUser(user), ...tokens };
+  }
+
+  async driverRegister(dto: any) {
+    const emailTaken = await this.userModel.findOne({ email: dto.email });
+    if (emailTaken) throw new UnauthorizedException('Email already in use');
+
+    const phone = normalisePhone(dto.phone);
+    const phoneTaken = await this.userModel.findOne({ phone });
+    if (phoneTaken) throw new UnauthorizedException('Phone already in use');
+
+    const hashed = await bcrypt.hash(dto.password, 10);
+    const user = await this.userModel.create({
+      name: dto.name,
+      email: dto.email,
+      phone,
+      password: hashed,
+      role: Role.DRIVER,
+      isActive: true,
+      driverProfile: {
+        vehicleType: dto.vehicleType ?? 'MOTORCYCLE',
+        balance: 0,
+        isOnline: false,
+        currentLocation: null,
+      },
+    });
 
     const tokens = await this.issueTokensForUser(user);
 
