@@ -115,6 +115,12 @@ export class Package {
 
   @Prop({ type: Types.ObjectId, ref: 'User', default: null })
   driverId: Types.ObjectId | null;
+
+  @Prop({ type: String, default: null })
+  podImage: string | null;
+
+  @Prop({ type: Date, default: null })
+  deliveredAt: Date | null;
 }
 
 export const PackageSchema = SchemaFactory.createForClass(Package);

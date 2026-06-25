@@ -167,10 +167,31 @@ export class PackagesService {
   }
 
   async findByTrackingNumber(trackingNumber: string) {
-    const pkg = await this.packageModel
-      .findOne({ trackingNumber: trackingNumber.toUpperCase() })
+    const cleanTn = trackingNumber.trim().toUpperCase();
+
+    // Try finding by MongoDB ObjectId first if it's a valid ID
+    if (Types.ObjectId.isValid(trackingNumber.trim())) {
+      const pkg = await this.packageModel
+        .findById(trackingNumber.trim())
+        .select('-payment.amount -customerId')
+        .populate('driverId', 'name email phone isOnline')
+        .exec();
+      if (pkg) return pkg;
+    }
+
+    let pkg = await this.packageModel
+      .findOne({ trackingNumber: cleanTn })
       .select('-payment.amount -customerId')
+      .populate('driverId', 'name email phone isOnline')
       .exec();
+
+    if (!pkg) {
+      pkg = await this.packageModel
+        .findOne({ trackingNumber: { $regex: cleanTn } })
+        .select('-payment.amount -customerId')
+        .populate('driverId', 'name email phone isOnline')
+        .exec();
+    }
 
     if (!pkg) throw new NotFoundException('Tracking number not found.');
     return pkg;
@@ -310,7 +331,12 @@ export class PackagesService {
     return pkg;
   }
 
-  async updateStatus(packageId: string, status: BookingStatus, user: RequestUser): Promise<PackageDocument> {
+  async updateStatus(
+    packageId: string,
+    status: BookingStatus,
+    user: RequestUser,
+    podImage?: string,
+  ): Promise<PackageDocument> {
     const pkg = await this.packageModel.findById(packageId);
     if (!pkg) throw new NotFoundException('Package not found');
 
@@ -330,6 +356,12 @@ export class PackagesService {
     }
 
     pkg.status = status;
+    if (status === BookingStatus.DELIVERED) {
+      if (podImage) {
+        pkg.podImage = podImage;
+      }
+      pkg.deliveredAt = new Date();
+    }
     await pkg.save();
 
     // If delivered, update driver balance with 95% of estimatedPrice (5% commission)

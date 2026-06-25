@@ -8,14 +8,22 @@ import { ValidationPipe, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AppModule } from './app.module';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import { join } from 'path';
+import * as express from 'express';
 
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
   const app = await NestFactory.create(AppModule);
 
-  // Global route prefix
-  app.setGlobalPrefix('api/v1');
+  // Serve any other static assets from /public (e.g. images served from /public/)
+  app.use(express.static(join(process.cwd(), 'public')));
+
+  // Global route prefix (applies to NestJS controllers).
+  // 'track' and 'packages/track/*' are excluded so they resolve WITHOUT the api/v1 prefix.
+  app.setGlobalPrefix('api/v1', {
+    exclude: ['track', 'packages/track/(.*)'],
+  });
 
   // Auto-validate all incoming DTOs
   app.useGlobalPipes(
@@ -26,9 +34,9 @@ async function bootstrap() {
     }),
   );
 
-  // CORS
+  // CORS — allow the tracking page origin
   app.enableCors({
-    origin: process.env.NODE_ENV === 'production' ? false : '*',
+    origin: '*',
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
     allowedHeaders: ['Content-Type', 'Authorization'],
   });
@@ -58,6 +66,7 @@ async function bootstrap() {
 
   await app.listen(port, '0.0.0.0');
   logger.log(`🚀 API running on http://localhost:${port}/api/v1`);
+  logger.log(`📦 Package tracking page: http://localhost:${port}/track`);
 }
 
 bootstrap();

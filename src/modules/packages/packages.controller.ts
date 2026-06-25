@@ -8,7 +8,11 @@ import {
   Post,
   Query,
   UseGuards,
+  UploadedFile,
+  UseInterceptors,
+  BadRequestException,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { PackagesService } from './packages.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { UpdateBookingDto, CancelBookingDto } from './dto/update-booking.dto';
@@ -19,11 +23,34 @@ import { RolesGuard } from '../auth/guards/role.guard';
 import { Roles } from '../auth/decorators/roles.decorators';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Role } from '../../common/enum/role.enum';
+import { CloudinaryService } from '../database/cloudinary/cloudinary.service';
 
 @Controller('packages')
 @UseGuards(JwtAuthGuard) // all routes require auth
 export class PackagesController {
-  constructor(private readonly packagesService: PackagesService) {}
+  constructor(
+    private readonly packagesService: PackagesService,
+    private readonly cloudinaryService: CloudinaryService,
+  ) {}
+
+  @Post('upload')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+      fileFilter: (_req, file, cb) => {
+        const allowed = ['image/jpeg', 'image/png', 'image/webp'];
+        if (!allowed.includes(file.mimetype)) {
+          return cb(new Error('Only JPEG, PNG, and WebP are allowed.'), false);
+        }
+        cb(null, true);
+      },
+    }),
+  )
+  async uploadFile(@UploadedFile() file: Express.Multer.File) {
+    if (!file) throw new BadRequestException('Image file is required.');
+    const { url } = await this.cloudinaryService.uploadImage(file, 'chonhchoun/packages');
+    return { url };
+  }
 
   // ─────────────────────────────────────────────────────────────────────────────
   // CUSTOMER routes
@@ -45,12 +72,7 @@ export class PackagesController {
     return this.packagesService.findMyBookings(user._id.toString(), query);
   }
 
-  // GET /api/v1/packages/track/:trackingNumber
-  // Public tracking — no auth required (customers share tracking links)
-  @Get('track/:trackingNumber')
-  track(@Param('trackingNumber') trackingNumber: string) {
-    return this.packagesService.findByTrackingNumber(trackingNumber);
-  }
+
 
   // GET /api/v1/packages/available
   // Driver: find available packages to deliver
@@ -122,7 +144,7 @@ export class PackagesController {
     @Body() dto: UpdatePackageStatusDto,
     @CurrentUser() user: any,
   ) {
-    return this.packagesService.updateStatus(id, dto.status, user);
+    return this.packagesService.updateStatus(id, dto.status, user, dto.podImage);
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
