@@ -29,6 +29,7 @@ export const RedisKey = {
 @Injectable()
 export class RedisService implements OnModuleDestroy {
   private readonly logger = new Logger(RedisService.name);
+  private isRedisHealthy = true;
 
   constructor(@Inject(REDIS_CLIENT) private readonly redis: Redis) {}
 
@@ -39,44 +40,78 @@ export class RedisService implements OnModuleDestroy {
   async ping(): Promise<boolean> {
     try {
       const result = await this.redis.ping();
+      this.isRedisHealthy = true;
       return result === 'PONG';
     } catch {
+      this.isRedisHealthy = false;
       return false;
     }
   }
 
-  async set(key: string, value: string, ttlSeconds?: number): Promise<void> {
-    if (ttlSeconds) {
-      await this.redis.setex(key, ttlSeconds, value);
-    } else {
-      await this.redis.set(key, value);
+  private handleRedisError(error: unknown, operation: string) {
+    this.isRedisHealthy = false;
+    const message = error instanceof Error ? error.message : String(error);
+    this.logger.warn(`Redis ${operation} failed: ${message}`);
+  }
+
+  private async safe<T>(
+    operation: string,
+    action: () => Promise<T>,
+    fallback: T,
+  ): Promise<T> {
+    try {
+      const result = await action();
+      this.isRedisHealthy = true;
+      return result;
+    } catch (error) {
+      this.handleRedisError(error, operation);
+      return fallback;
     }
   }
 
+  async set(key: string, value: string, ttlSeconds?: number): Promise<void> {
+    await this.safe(
+      'set',
+      async () => {
+        if (ttlSeconds) {
+          await this.redis.setex(key, ttlSeconds, value);
+        } else {
+          await this.redis.set(key, value);
+        }
+      },
+      undefined,
+    );
+  }
+
   async get(key: string): Promise<string | null> {
-    return this.redis.get(key);
+    return this.safe('get', () => this.redis.get(key), null);
   }
 
   async del(...keys: string[]): Promise<void> {
-    if (keys.length > 0) await this.redis.del(...keys);
+    if (keys.length === 0) return;
+    await this.safe('del', async () => {
+      await this.redis.del(...keys);
+    }, undefined);
   }
 
   async exists(key: string): Promise<boolean> {
-    const result = await this.redis.exists(key);
+    const result = await this.safe('exists', () => this.redis.exists(key), 0);
     return result === 1;
   }
 
   async ttl(key: string): Promise<number> {
-    return this.redis.ttl(key);
+    return this.safe('ttl', () => this.redis.ttl(key), -1);
   }
 
   async expire(key: string, ttlSeconds: number): Promise<void> {
-    await this.redis.expire(key, ttlSeconds);
+    await this.safe('expire', async () => {
+      await this.redis.expire(key, ttlSeconds);
+    }, undefined);
   }
 
   // Pattern operations
   async keys(pattern: string): Promise<string[]> {
-    return this.redis.keys(pattern);
+    return this.safe('keys', () => this.redis.keys(pattern), []);
   }
 
   async delByPattern(pattern: string): Promise<void> {
@@ -87,44 +122,54 @@ export class RedisService implements OnModuleDestroy {
 
   // Counter operations (for rate limiting / OTP attempts)
   async increment(key: string): Promise<number> {
-    return this.redis.incr(key);
+    return this.safe('increment', () => this.redis.incr(key), 0);
   }
 
   async incrementWithTTL(key: string, ttlSeconds: number): Promise<number> {
-    const pipeline = this.redis.pipeline();
-    pipeline.incr(key);
-    pipeline.expire(key, ttlSeconds);
-    const results = await pipeline.exec();
-    return (results?.[0]?.[1] as number) ?? 0;
+    return this.safe('incrementWithTTL', async () => {
+      const pipeline = this.redis.pipeline();
+      pipeline.incr(key);
+      pipeline.expire(key, ttlSeconds);
+      const results = await pipeline.exec();
+      return (results?.[0]?.[1] as number) ?? 0;
+    }, 0);
   }
 
   async hset(key: string, data: Record<string, string>): Promise<void> {
-    await this.redis.hset(key, data);
+    await this.safe('hset', async () => {
+      await this.redis.hset(key, data);
+    }, undefined);
   }
 
   async hget(key: string, field: string): Promise<string | null> {
-    return this.redis.hget(key, field);
+    return this.safe('hget', () => this.redis.hget(key, field), null);
   }
 
   async hgetall(key: string): Promise<Record<string, string> | null> {
-    const data = await this.redis.hgetall(key);
+    const data = await this.safe('hgetall', () => this.redis.hgetall(key), {});
     return Object.keys(data).length ? data : null;
   }
 
   async hdel(key: string, ...fields: string[]): Promise<void> {
-    await this.redis.hdel(key, ...fields);
+    await this.safe('hdel', async () => {
+      await this.redis.hdel(key, ...fields);
+    }, undefined);
   }
 
   async sadd(key: string, ...members: string[]): Promise<void> {
-    await this.redis.sadd(key, ...members);
+    await this.safe('sadd', async () => {
+      await this.redis.sadd(key, ...members);
+    }, undefined);
   }
 
   async smembers(key: string): Promise<string[]> {
-    return this.redis.smembers(key);
+    return this.safe('smembers', () => this.redis.smembers(key), []);
   }
 
   async srem(key: string, ...members: string[]): Promise<void> {
-    await this.redis.srem(key, ...members);
+    await this.safe('srem', async () => {
+      await this.redis.srem(key, ...members);
+    }, undefined);
   }
 
   //  HIGH-LEVEL DOMAIN METHODS
@@ -147,6 +192,7 @@ export class RedisService implements OnModuleDestroy {
     userId: string,
     tokenId: string,
   ): Promise<string | null> {
+    if (!this.isRedisHealthy) return null;
     return this.get(RedisKey.refreshToken(userId, tokenId));
   }
 

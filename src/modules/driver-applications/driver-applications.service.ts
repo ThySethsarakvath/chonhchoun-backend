@@ -30,9 +30,12 @@ import { VehicleStatus } from '../../common/enum/vehicle-status.enum';
 import { Vehicle, VehicleDocument } from '../../shared/schemas/vehicle.schema';
 import { AssignDriverVehicleDto } from './dto/assign-driver-vehicle.dto';
 import { ApproveDriverApplicationDto } from './dto/approve-driver-application.dto';
+import { CreateAdminCompanyVehicleDto } from './dto/create-admin-company-vehicle.dto';
 import { CreateBranchVehicleDto } from './dto/create-branch-vehicle.dto';
+import { CreateCustomerDriverApplicationDto } from './dto/create-customer-driver-application.dto';
 import { CreateDriverApplicationDto } from './dto/create-driver-application.dto';
 import { RejectDriverApplicationDto } from './dto/reject-driver-application.dto';
+import { UpdateAdminCompanyVehicleDto } from './dto/update-admin-company-vehicle.dto';
 import { UpdateBranchVehicleDto } from './dto/update-branch-vehicle.dto';
 import { UpdateDriverManagementDto } from './dto/update-driver-management.dto';
 
@@ -112,6 +115,14 @@ export class DriverApplicationsService {
         vehicle.branchId && typeof vehicle.branchId === 'object'
           ? vehicle.branchId._id
           : (vehicle.branchId ?? null),
+      branchName:
+        vehicle.branchId && typeof vehicle.branchId === 'object'
+          ? vehicle.branchId.name
+          : null,
+      branchCode:
+        vehicle.branchId && typeof vehicle.branchId === 'object'
+          ? vehicle.branchId.code ?? null
+          : null,
       ownerDriverId:
         vehicle.ownerDriverId && typeof vehicle.ownerDriverId === 'object'
           ? vehicle.ownerDriverId._id
@@ -284,12 +295,166 @@ export class DriverApplicationsService {
     );
   }
 
+  async createForCurrentUser(
+    userId: string,
+    dto: CreateCustomerDriverApplicationDto,
+    files: {
+      avatar?: Express.Multer.File[];
+      cv?: Express.Multer.File[];
+      nationalId?: Express.Multer.File[];
+      drivingLicense?: Express.Multer.File[];
+    },
+  ) {
+    const user = await this.userModel
+      .findById(userId)
+      .select('+password')
+      .exec();
+    if (!user) {
+      throw new NotFoundException('User not found.');
+    }
+    if (user.role !== Role.CUSTOMER) {
+      throw new BadRequestException(
+        'Only customer accounts can request to become drivers.',
+      );
+    }
+    if (!user.isActive) {
+      throw new BadRequestException('Inactive users cannot submit requests.');
+    }
+    if (dto.vehicleType === VehicleType.CAR) {
+      throw new BadRequestException(
+        'Car is no longer supported for driver registration. Use motorcycle, truck, or large truck.',
+      );
+    }
+
+    const branch = await this.branchModel.findById(dto.branchId).exec();
+    if (!branch || !branch.isActive) {
+      throw new BadRequestException('Selected branch is not available.');
+    }
+
+    const [avatarFile, cvFile, nationalIdFile, drivingLicenseFile] = [
+      files.avatar?.[0],
+      files.cv?.[0],
+      files.nationalId?.[0],
+      files.drivingLicense?.[0],
+    ];
+    const isOwnVehicleApplication = dto.vehicleType != null;
+    const isMotorcycleApplication = dto.vehicleType === VehicleType.MOTORCYCLE;
+
+    if (!cvFile || !nationalIdFile) {
+      throw new BadRequestException('CV and national ID files are required.');
+    }
+    if (
+      (!isOwnVehicleApplication || !isMotorcycleApplication) &&
+      !drivingLicenseFile
+    ) {
+      throw new BadRequestException(
+        'Driving license is required unless the driver uses their own motorcycle.',
+      );
+    }
+    if (!avatarFile && (!user.avatarUrl || !user.avatarPublicId)) {
+      throw new BadRequestException(
+        'Please upload a profile photo before submitting your request.',
+      );
+    }
+
+    const existingPendingApplication = await this.applicationModel.findOne({
+      $or: [
+        { applicantUserId: user._id },
+        { email: user.email },
+        { phone: user.phone },
+      ],
+      status: DriverApplicationStatus.PENDING,
+    });
+    if (existingPendingApplication) {
+      throw new ConflictException(
+        'You already have a pending driver request under review.',
+      );
+    }
+
+    const [avatar, cv, nationalId, drivingLicense] = await Promise.all([
+      avatarFile
+        ? this.cloudinaryService.uploadImage(
+            avatarFile,
+            'chonhchoun/driver-applications/avatars',
+          )
+        : Promise.resolve(null),
+      this.cloudinaryService.uploadDocument(
+        cvFile,
+        'chonhchoun/driver-applications/cv',
+      ),
+      this.cloudinaryService.uploadDocument(
+        nationalIdFile,
+        'chonhchoun/driver-applications/national-id',
+      ),
+      drivingLicenseFile
+        ? this.cloudinaryService.uploadDocument(
+            drivingLicenseFile,
+            'chonhchoun/driver-applications/driving-license',
+          )
+        : Promise.resolve(null),
+    ]);
+
+    const application = await this.applicationModel.create({
+      applicantUserId: user._id,
+      name: user.name.trim(),
+      email: user.email.trim().toLowerCase(),
+      phone: user.phone,
+      passwordHash: user.password,
+      branchId: branch._id,
+      vehicleType: dto.vehicleType ?? null,
+      plateNumber: dto.plateNumber?.trim() || null,
+      avatar:
+        avatar && avatarFile
+          ? {
+              ...avatar,
+              originalName: avatarFile.originalname,
+            }
+          : {
+              url: user.avatarUrl!,
+              publicId: user.avatarPublicId!,
+              originalName: 'current-profile-avatar',
+            },
+      cv: {
+        ...cv,
+        originalName: cvFile.originalname,
+      },
+      nationalId: {
+        ...nationalId,
+        originalName: nationalIdFile.originalname,
+      },
+      drivingLicense:
+        drivingLicense && drivingLicenseFile
+          ? {
+              ...drivingLicense,
+              originalName: drivingLicenseFile.originalname,
+            }
+          : null,
+      status: DriverApplicationStatus.PENDING,
+    });
+
+    return this.serializeApplication(
+      await application.populate('branchId', 'name branchNumber address phone'),
+    );
+  }
+
   async listForBranchOwner(ownerId: string) {
     const branch = await this.getBranchForOwner(ownerId);
 
     const applications = await this.applicationModel
       .find({ branchId: branch._id })
       .populate('branchId', 'name branchNumber address phone')
+      .sort({ createdAt: -1 })
+      .exec();
+
+    return applications.map((application) =>
+      this.serializeApplication(application),
+    );
+  }
+
+  async listForAdmin() {
+    const applications = await this.applicationModel
+      .find()
+      .populate('branchId', 'name branchNumber address phone code')
       .sort({ createdAt: -1 })
       .exec();
 
@@ -340,6 +505,17 @@ export class DriverApplicationsService {
         ],
       })
       .populate('ownerDriverId', 'name')
+      .sort({ createdAt: -1 })
+      .exec();
+
+    return vehicles.map((vehicle) => this.serializeVehicle(vehicle));
+  }
+
+  async listVehiclesForAdmin() {
+    const vehicles = await this.vehicleModel
+      .find({ ownershipType: VehicleOwnershipType.COMPANY })
+      .populate('ownerDriverId', 'name')
+      .populate('branchId', 'name code branchNumber')
       .sort({ createdAt: -1 })
       .exec();
 
@@ -420,7 +596,14 @@ export class DriverApplicationsService {
     ownerId: string,
     dto: CreateBranchVehicleDto,
   ) {
-    const branch = await this.getBranchForOwner(ownerId);
+    await this.getBranchForOwner(ownerId);
+    void dto;
+    throw new BadRequestException(
+      'Branch owners cannot create company vehicles. Please ask admin to create and assign the vehicle.',
+    );
+  }
+
+  async createVehicleForAdmin(dto: CreateAdminCompanyVehicleDto) {
     const code = dto.code.trim().toUpperCase();
     const defaults = this.vehicleCapacityDefaults(dto.type);
 
@@ -429,13 +612,20 @@ export class DriverApplicationsService {
       throw new ConflictException('A vehicle with this code already exists.');
     }
 
+    const branch = dto.branchId
+      ? await this.branchModel.findById(dto.branchId).exec()
+      : null;
+    if (dto.branchId && (!branch || !branch.isActive)) {
+      throw new BadRequestException('Assigned branch is not available.');
+    }
+
     const vehicle = await this.vehicleModel.create({
       code,
       plateNumber: dto.plateNumber?.trim() || null,
       type: dto.type,
       ownershipType: VehicleOwnershipType.COMPANY,
-      branchId: branch._id,
-      currentWarehouse: dto.currentWarehouse?.trim() || branch.name,
+      branchId: branch?._id ?? null,
+      currentWarehouse: dto.currentWarehouse?.trim() || branch?.name || null,
       status: dto.status ?? VehicleStatus.AVAILABLE,
       maxWeightKg: dto.maxWeightKg ?? defaults.maxWeightKg,
       maxVolumeM3: dto.maxVolumeM3 ?? null,
@@ -443,7 +633,12 @@ export class DriverApplicationsService {
       isActive: true,
     });
 
-    return this.serializeVehicle(vehicle);
+    const populatedVehicle = await this.vehicleModel
+      .findById(vehicle._id)
+      .populate('branchId', 'name code branchNumber')
+      .exec();
+
+    return this.serializeVehicle(populatedVehicle);
   }
 
   async updateVehicleForBranchOwner(
@@ -451,27 +646,53 @@ export class DriverApplicationsService {
     ownerId: string,
     dto: UpdateBranchVehicleDto,
   ) {
-    const branch = await this.getBranchForOwner(ownerId);
+    await this.getBranchForOwner(ownerId);
+    void vehicleId;
+    void dto;
+    throw new BadRequestException(
+      'Branch owners cannot edit company vehicles. Please ask admin to manage vehicle details.',
+    );
+  }
+
+  async updateVehicleForAdmin(
+    vehicleId: string,
+    dto: UpdateAdminCompanyVehicleDto,
+  ) {
     const vehicle = await this.vehicleModel.findById(vehicleId).exec();
     if (!vehicle) {
       throw new NotFoundException('Vehicle not found.');
     }
-    if (vehicle.branchId?.toString() !== branch._id.toString()) {
-      throw new BadRequestException(
-        'This vehicle does not belong to your branch.',
-      );
-    }
     if (vehicle.ownershipType !== VehicleOwnershipType.COMPANY) {
       throw new BadRequestException(
-        'Driver-owned vehicles cannot be edited from branch vehicle management.',
+        'Only company vehicles can be managed from admin vehicle management.',
       );
     }
+
     const activeAssignment = await this.assignmentModel.findOne({
       vehicleId: vehicle._id,
       isActive: true,
     });
     const isAssigned = Boolean(activeAssignment);
 
+    if (dto.branchId !== undefined) {
+      if (isAssigned) {
+        throw new BadRequestException(
+          'Assigned vehicles cannot be moved to another branch until they are unassigned.',
+        );
+      }
+      if (dto.branchId === null) {
+        vehicle.branchId = null;
+      } else {
+        const branch = await this.branchModel.findById(dto.branchId).exec();
+        if (!branch || !branch.isActive) {
+          throw new BadRequestException('Assigned branch is not available.');
+        }
+        vehicle.branchId = branch._id;
+        if (!dto.currentWarehouse) {
+          vehicle.currentWarehouse = branch.name;
+        }
+      }
+    }
     if (dto.plateNumber !== undefined) {
       vehicle.plateNumber = dto.plateNumber?.trim() || null;
     }
@@ -494,32 +715,39 @@ export class DriverApplicationsService {
     if (dto.maxWeightKg !== undefined) {
       vehicle.maxWeightKg = dto.maxWeightKg ?? null;
     }
+    if (dto.maxVolumeM3 !== undefined) {
+      vehicle.maxVolumeM3 = dto.maxVolumeM3 ?? null;
+    }
     if (dto.maxPackageCount !== undefined) {
       vehicle.maxPackageCount = dto.maxPackageCount ?? null;
     }
     if (isAssigned) {
       vehicle.status = VehicleStatus.IN_USE;
     }
-    await vehicle.save();
 
-    return this.serializeVehicle(vehicle);
+    await vehicle.save();
+    const populatedVehicle = await this.vehicleModel
+      .findById(vehicle._id)
+      .populate('branchId', 'name code branchNumber')
+      .exec();
+    return this.serializeVehicle(populatedVehicle);
   }
 
   async deactivateVehicleForBranchOwner(vehicleId: string, ownerId: string) {
-    const branch = await this.getBranchForOwner(ownerId);
+    await this.getBranchForOwner(ownerId);
+    void vehicleId;
+    throw new BadRequestException(
+      'Branch owners cannot deactivate company vehicles. Please ask admin to manage vehicle status.',
+    );
+  }
+
+  async deactivateVehicleForAdmin(vehicleId: string) {
     const vehicle = await this.vehicleModel.findById(vehicleId).exec();
     if (!vehicle) {
       throw new NotFoundException('Vehicle not found.');
     }
-    if (vehicle.branchId?.toString() !== branch._id.toString()) {
-      throw new BadRequestException(
-        'This vehicle does not belong to your branch.',
-      );
-    }
     if (vehicle.ownershipType !== VehicleOwnershipType.COMPANY) {
-      throw new BadRequestException(
-        'Driver-owned vehicles cannot be deactivated from branch vehicle management.',
-      );
+      throw new BadRequestException('Only company vehicles can be deactivated.');
     }
 
     const activeAssignment = await this.assignmentModel.findOne({
@@ -540,20 +768,20 @@ export class DriverApplicationsService {
   }
 
   async activateVehicleForBranchOwner(vehicleId: string, ownerId: string) {
-    const branch = await this.getBranchForOwner(ownerId);
+    await this.getBranchForOwner(ownerId);
+    void vehicleId;
+    throw new BadRequestException(
+      'Branch owners cannot activate company vehicles. Please ask admin to manage vehicle status.',
+    );
+  }
+
+  async activateVehicleForAdmin(vehicleId: string) {
     const vehicle = await this.vehicleModel.findById(vehicleId).exec();
     if (!vehicle) {
       throw new NotFoundException('Vehicle not found.');
     }
-    if (vehicle.branchId?.toString() !== branch._id.toString()) {
-      throw new BadRequestException(
-        'This vehicle does not belong to your branch.',
-      );
-    }
     if (vehicle.ownershipType !== VehicleOwnershipType.COMPANY) {
-      throw new BadRequestException(
-        'Driver-owned vehicles cannot be activated from branch vehicle management.',
-      );
+      throw new BadRequestException('Only company vehicles can be activated.');
     }
 
     vehicle.isActive = true;
@@ -955,17 +1183,6 @@ export class DriverApplicationsService {
       );
     }
 
-    const [existingEmail, existingPhone] = await Promise.all([
-      this.userModel.findOne({ email: application.email }).exec(),
-      this.userModel.findOne({ phone: application.phone }).exec(),
-    ]);
-
-    if (existingEmail || existingPhone) {
-      throw new ConflictException(
-        'Cannot approve this application because the email or phone is already in use.',
-      );
-    }
-
     let finalVehicleType: VehicleType | null = null;
     let finalAssignedVehicleCode: string | null = null;
     if (application.vehicleType != null) {
@@ -994,24 +1211,93 @@ export class DriverApplicationsService {
       finalVehicleType = dto.vehicleType ?? VehicleType.TRUCK;
     }
     const defaults = this.vehicleCapacityDefaults(finalVehicleType);
+    let driverUser: UserDocument;
+    if (application.applicantUserId) {
+      const existingUser = await this.userModel.findById(
+        application.applicantUserId,
+      );
+      if (!existingUser) {
+        throw new NotFoundException('Applicant user account not found.');
+      }
+      if (existingUser.role === Role.DRIVER) {
+        throw new ConflictException('This user is already a driver.');
+      }
+      if (existingUser.role !== Role.CUSTOMER) {
+        throw new BadRequestException(
+          'Only customer accounts can be upgraded through this request flow.',
+        );
+      }
 
-    const driverUser = await this.userModel.create({
-      name: application.name,
-      email: application.email,
-      phone: application.phone,
-      password: application.passwordHash,
-      role: Role.DRIVER,
-      vehicleType: finalVehicleType,
-      assignedVehicleCode: finalAssignedVehicleCode,
-      availabilityStatus: DriverAvailabilityStatus.OFFLINE,
-      supportedVehicleTypes: finalVehicleType ? [finalVehicleType] : [],
-      maxLoadWeightKg: defaults.maxWeightKg,
-      maxPackageCount: defaults.maxPackageCount,
-      isActive: true,
-      avatarUrl: application.avatar.url,
-      avatarPublicId: application.avatar.publicId,
-      branchId: application.branchId,
-    });
+      const [existingEmail, existingPhone] = await Promise.all([
+        this.userModel
+          .findOne({
+            email: application.email,
+            _id: { $ne: existingUser._id },
+          })
+          .exec(),
+        this.userModel
+          .findOne({
+            phone: application.phone,
+            _id: { $ne: existingUser._id },
+          })
+          .exec(),
+      ]);
+
+      if (existingEmail || existingPhone) {
+        throw new ConflictException(
+          'Cannot approve this request because the email or phone is already in use.',
+        );
+      }
+
+      existingUser.name = application.name;
+      existingUser.email = application.email;
+      existingUser.phone = application.phone;
+      existingUser.role = Role.DRIVER;
+      existingUser.vehicleType = finalVehicleType;
+      existingUser.assignedVehicleCode = finalAssignedVehicleCode;
+      existingUser.availabilityStatus = DriverAvailabilityStatus.OFFLINE;
+      existingUser.supportedVehicleTypes = finalVehicleType
+        ? [finalVehicleType]
+        : [];
+      existingUser.maxLoadWeightKg = defaults.maxWeightKg;
+      existingUser.maxPackageCount = defaults.maxPackageCount;
+      existingUser.isActive = true;
+      existingUser.avatarUrl = application.avatar.url;
+      existingUser.avatarPublicId = application.avatar.publicId;
+      existingUser.branchId = application.branchId;
+      existingUser.licenseNumber = null;
+      existingUser.licenseExpiry = null;
+      driverUser = await existingUser.save();
+    } else {
+      const [existingEmail, existingPhone] = await Promise.all([
+        this.userModel.findOne({ email: application.email }).exec(),
+        this.userModel.findOne({ phone: application.phone }).exec(),
+      ]);
+
+      if (existingEmail || existingPhone) {
+        throw new ConflictException(
+          'Cannot approve this application because the email or phone is already in use.',
+        );
+      }
+
+      driverUser = await this.userModel.create({
+        name: application.name,
+        email: application.email,
+        phone: application.phone,
+        password: application.passwordHash,
+        role: Role.DRIVER,
+        vehicleType: finalVehicleType,
+        assignedVehicleCode: finalAssignedVehicleCode,
+        availabilityStatus: DriverAvailabilityStatus.OFFLINE,
+        supportedVehicleTypes: finalVehicleType ? [finalVehicleType] : [],
+        maxLoadWeightKg: defaults.maxWeightKg,
+        maxPackageCount: defaults.maxPackageCount,
+        isActive: true,
+        avatarUrl: application.avatar.url,
+        avatarPublicId: application.avatar.publicId,
+        branchId: application.branchId,
+      });
+    }
 
     if (application.vehicleType != null && finalVehicleType != null) {
       const ownVehicle = await this.vehicleModel.create({
@@ -1038,21 +1324,248 @@ export class DriverApplicationsService {
       await driverUser.save();
       application.assignedVehicleCode = null;
     } else if (finalAssignedVehicleCode) {
-      let branchVehicle = await this.vehicleModel.findOne({
+      const branchVehicle = await this.vehicleModel.findOne({
         code: finalAssignedVehicleCode,
+        branchId: application.branchId,
       });
       if (!branchVehicle) {
-        branchVehicle = await this.vehicleModel.create({
-          code: finalAssignedVehicleCode,
-          type: VehicleType.TRUCK,
-          ownershipType: VehicleOwnershipType.COMPANY,
-          branchId: application.branchId,
-          currentWarehouse: branch.name,
-          status: VehicleStatus.AVAILABLE,
-          maxWeightKg: defaults.maxWeightKg,
-          maxPackageCount: defaults.maxPackageCount,
-          isActive: true,
-        });
+        throw new BadRequestException(
+          'Assigned branch vehicle was not found. Please ask admin to create and assign the vehicle first.',
+        );
+      }
+      if (branchVehicle.ownershipType !== VehicleOwnershipType.COMPANY) {
+        throw new BadRequestException(
+          'Assigned vehicle code belongs to a driver-owned vehicle.',
+        );
+      }
+      if (!branchVehicle.isActive) {
+        throw new BadRequestException('Assigned branch vehicle is inactive.');
+      }
+      if (branchVehicle.status !== VehicleStatus.AVAILABLE) {
+        throw new BadRequestException(
+          'Assigned branch vehicle is not available.',
+        );
+      }
+
+      await this.assignmentModel.create({
+        driverId: driverUser._id,
+        vehicleId: branchVehicle._id,
+        assignmentType: DriverVehicleAssignmentType.PRIMARY,
+        assignedAt: new Date(),
+        isActive: true,
+      });
+      branchVehicle.status = VehicleStatus.IN_USE;
+      await branchVehicle.save();
+    }
+
+    application.vehicleType = finalVehicleType;
+    application.assignedVehicleCode =
+      application.assignedVehicleCode ?? finalAssignedVehicleCode;
+    application.status = DriverApplicationStatus.APPROVED;
+    application.reviewedBy = new Types.ObjectId(reviewerId);
+    application.reviewedAt = new Date();
+    application.rejectionReason = null;
+    application.approvedUserId = driverUser._id;
+    await application.save();
+
+    await this.mailService.sendDriverApplicationApproved(
+      application.email,
+      application.name,
+      branch.name,
+    );
+
+    return this.serializeApplication(
+      await application.populate('branchId', 'name branchNumber address phone'),
+    );
+  }
+
+  async approveForAdmin(
+    applicationId: string,
+    reviewerId: string,
+    dto: ApproveDriverApplicationDto,
+  ) {
+    const application = await this.applicationModel
+      .findById(applicationId)
+      .select('+passwordHash')
+      .exec();
+    if (!application) {
+      throw new NotFoundException('Driver application not found.');
+    }
+
+    if (application.status !== DriverApplicationStatus.PENDING) {
+      throw new BadRequestException(
+        'Only pending applications can be approved.',
+      );
+    }
+
+    const branch = await this.branchModel.findById(application.branchId).exec();
+    if (!branch) {
+      throw new BadRequestException('Assigned branch no longer exists.');
+    }
+
+    let finalVehicleType: VehicleType | null = null;
+    let finalAssignedVehicleCode: string | null = null;
+    if (application.vehicleType != null) {
+      if (dto.vehicleType != null) {
+        throw new BadRequestException(
+          'Driver-owned applications should be approved without assigning a company vehicle.',
+        );
+      }
+      if (dto.assignedVehicleCode?.trim()) {
+        throw new BadRequestException(
+          'Driver-owned applications should not receive a company vehicle code.',
+        );
+      }
+      finalVehicleType = application.vehicleType;
+    } else {
+      if (
+        dto.vehicleType != null &&
+        dto.vehicleType !== VehicleType.TRUCK &&
+        dto.vehicleType !== VehicleType.TRUCK_LARGE
+      ) {
+        throw new BadRequestException(
+          'Company branch vehicle approvals currently support truck assignment only.',
+        );
+      }
+      finalAssignedVehicleCode = dto.assignedVehicleCode?.trim() || null;
+      finalVehicleType = dto.vehicleType ?? VehicleType.TRUCK;
+    }
+
+    const defaults = this.vehicleCapacityDefaults(finalVehicleType);
+    let driverUser: UserDocument;
+    if (application.applicantUserId) {
+      const existingUser = await this.userModel.findById(
+        application.applicantUserId,
+      );
+      if (!existingUser) {
+        throw new NotFoundException('Applicant user account not found.');
+      }
+      if (existingUser.role === Role.DRIVER) {
+        throw new ConflictException('This user is already a driver.');
+      }
+      if (existingUser.role !== Role.CUSTOMER) {
+        throw new BadRequestException(
+          'Only customer accounts can be upgraded through this request flow.',
+        );
+      }
+
+      const [existingEmail, existingPhone] = await Promise.all([
+        this.userModel
+          .findOne({
+            email: application.email,
+            _id: { $ne: existingUser._id },
+          })
+          .exec(),
+        this.userModel
+          .findOne({
+            phone: application.phone,
+            _id: { $ne: existingUser._id },
+          })
+          .exec(),
+      ]);
+
+      if (existingEmail || existingPhone) {
+        throw new ConflictException(
+          'Cannot approve this request because the email or phone is already in use.',
+        );
+      }
+
+      existingUser.name = application.name;
+      existingUser.email = application.email;
+      existingUser.phone = application.phone;
+      existingUser.role = Role.DRIVER;
+      existingUser.vehicleType = finalVehicleType;
+      existingUser.assignedVehicleCode = finalAssignedVehicleCode;
+      existingUser.availabilityStatus = DriverAvailabilityStatus.OFFLINE;
+      existingUser.supportedVehicleTypes = finalVehicleType
+        ? [finalVehicleType]
+        : [];
+      existingUser.maxLoadWeightKg = defaults.maxWeightKg;
+      existingUser.maxPackageCount = defaults.maxPackageCount;
+      existingUser.isActive = true;
+      existingUser.avatarUrl = application.avatar.url;
+      existingUser.avatarPublicId = application.avatar.publicId;
+      existingUser.branchId = application.branchId;
+      existingUser.licenseNumber = null;
+      existingUser.licenseExpiry = null;
+      driverUser = await existingUser.save();
+    } else {
+      const [existingEmail, existingPhone] = await Promise.all([
+        this.userModel.findOne({ email: application.email }).exec(),
+        this.userModel.findOne({ phone: application.phone }).exec(),
+      ]);
+
+      if (existingEmail || existingPhone) {
+        throw new ConflictException(
+          'Cannot approve this application because the email or phone is already in use.',
+        );
+      }
+
+      driverUser = await this.userModel.create({
+        name: application.name,
+        email: application.email,
+        phone: application.phone,
+        password: application.passwordHash,
+        role: Role.DRIVER,
+        vehicleType: finalVehicleType,
+        assignedVehicleCode: finalAssignedVehicleCode,
+        availabilityStatus: DriverAvailabilityStatus.OFFLINE,
+        supportedVehicleTypes: finalVehicleType ? [finalVehicleType] : [],
+        maxLoadWeightKg: defaults.maxWeightKg,
+        maxPackageCount: defaults.maxPackageCount,
+        isActive: true,
+        avatarUrl: application.avatar.url,
+        avatarPublicId: application.avatar.publicId,
+        branchId: application.branchId,
+      });
+    }
+
+    if (application.vehicleType != null && finalVehicleType != null) {
+      const ownVehicle = await this.vehicleModel.create({
+        code: `DRV-${driverUser._id.toString().slice(-6).toUpperCase()}`,
+        plateNumber: application.plateNumber ?? null,
+        type: finalVehicleType,
+        ownershipType: VehicleOwnershipType.DRIVER_OWNED,
+        branchId: application.branchId,
+        ownerDriverId: driverUser._id,
+        currentWarehouse: branch.name,
+        status: VehicleStatus.AVAILABLE,
+        maxWeightKg: defaults.maxWeightKg,
+        maxPackageCount: defaults.maxPackageCount,
+        isActive: true,
+      });
+      await this.assignmentModel.create({
+        driverId: driverUser._id,
+        vehicleId: ownVehicle._id,
+        assignmentType: DriverVehicleAssignmentType.PRIMARY,
+        assignedAt: new Date(),
+        isActive: true,
+      });
+      driverUser.assignedVehicleCode = null;
+      await driverUser.save();
+      application.assignedVehicleCode = null;
+    } else if (finalAssignedVehicleCode) {
+      const branchVehicle = await this.vehicleModel.findOne({
+        code: finalAssignedVehicleCode,
+        branchId: application.branchId,
+      });
+      if (!branchVehicle) {
+        throw new BadRequestException(
+          'Assigned branch vehicle was not found. Please create and assign the vehicle first.',
+        );
+      }
+      if (branchVehicle.ownershipType !== VehicleOwnershipType.COMPANY) {
+        throw new BadRequestException(
+          'Assigned vehicle code belongs to a driver-owned vehicle.',
+        );
+      }
+      if (!branchVehicle.isActive) {
+        throw new BadRequestException('Assigned branch vehicle is inactive.');
+      }
+      if (branchVehicle.status !== VehicleStatus.AVAILABLE) {
+        throw new BadRequestException(
+          'Assigned branch vehicle is not available.',
+        );
       }
 
       await this.assignmentModel.create({
@@ -1116,6 +1629,33 @@ export class DriverApplicationsService {
     ) {
       throw new BadRequestException(
         'You can only reject applications for your own branch.',
+      );
+    }
+
+    application.status = DriverApplicationStatus.REJECTED;
+    application.reviewedBy = new Types.ObjectId(reviewerId);
+    application.reviewedAt = new Date();
+    application.rejectionReason = dto.reason?.trim() ?? null;
+    await application.save();
+
+    return this.serializeApplication(
+      await application.populate('branchId', 'name branchNumber address phone'),
+    );
+  }
+
+  async rejectForAdmin(
+    applicationId: string,
+    reviewerId: string,
+    dto: RejectDriverApplicationDto,
+  ) {
+    const application = await this.applicationModel.findById(applicationId).exec();
+    if (!application) {
+      throw new NotFoundException('Driver application not found.');
+    }
+
+    if (application.status !== DriverApplicationStatus.PENDING) {
+      throw new BadRequestException(
+        'Only pending applications can be rejected.',
       );
     }
 

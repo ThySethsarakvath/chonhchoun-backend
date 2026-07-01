@@ -21,8 +21,11 @@ import { UpdateDriverVehicleTypeDto } from '../users/dto/update-driver-vehicle-t
 import { AssignDriverVehicleDto } from './dto/assign-driver-vehicle.dto';
 import { ApproveDriverApplicationDto } from './dto/approve-driver-application.dto';
 import { CreateBranchVehicleDto } from './dto/create-branch-vehicle.dto';
+import { CreateAdminCompanyVehicleDto } from './dto/create-admin-company-vehicle.dto';
+import { CreateCustomerDriverApplicationDto } from './dto/create-customer-driver-application.dto';
 import { CreateDriverApplicationDto } from './dto/create-driver-application.dto';
 import { RejectDriverApplicationDto } from './dto/reject-driver-application.dto';
+import { UpdateAdminCompanyVehicleDto } from './dto/update-admin-company-vehicle.dto';
 import { UpdateBranchVehicleDto } from './dto/update-branch-vehicle.dto';
 import { UpdateDriverManagementDto } from './dto/update-driver-management.dto';
 import { DriverApplicationsService } from './driver-applications.service';
@@ -59,6 +62,40 @@ export class DriverApplicationsController {
     },
   ) {
     return this.driverApplicationsService.create(dto, files);
+  }
+
+  @Post('me')
+  @HttpCode(HttpStatus.CREATED)
+  @UseGuards(JwtAuthGuard)
+  @UseInterceptors(
+    FileFieldsInterceptor(
+      [
+        { name: 'avatar', maxCount: 1 },
+        { name: 'cv', maxCount: 1 },
+        { name: 'nationalId', maxCount: 1 },
+        { name: 'drivingLicense', maxCount: 1 },
+      ],
+      {
+        limits: { fileSize: 8 * 1024 * 1024 },
+      },
+    ),
+  )
+  createForCurrentUser(
+    @CurrentUser() user: any,
+    @Body() dto: CreateCustomerDriverApplicationDto,
+    @UploadedFiles()
+    files: {
+      avatar?: Express.Multer.File[];
+      cv?: Express.Multer.File[];
+      nationalId?: Express.Multer.File[];
+      drivingLicense?: Express.Multer.File[];
+    },
+  ) {
+    return this.driverApplicationsService.createForCurrentUser(
+      user._id.toString(),
+      dto,
+      files,
+    );
   }
 
   @Get('branch-owner')
@@ -243,5 +280,80 @@ export class DriverApplicationsController {
     @Body() dto: RejectDriverApplicationDto,
   ) {
     return this.driverApplicationsService.reject(id, user._id.toString(), dto);
+  }
+
+  @Get('admin/applications')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
+  listForAdmin() {
+    return this.driverApplicationsService.listForAdmin();
+  }
+
+  @Post('admin/applications/:id/approve')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
+  approveForAdmin(
+    @Param('id') id: string,
+    @CurrentUser() user: any,
+    @Body() dto: ApproveDriverApplicationDto,
+  ) {
+    return this.driverApplicationsService.approveForAdmin(
+      id,
+      user._id.toString(),
+      dto,
+    );
+  }
+
+  @Post('admin/applications/:id/reject')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
+  rejectForAdmin(
+    @Param('id') id: string,
+    @CurrentUser() user: any,
+    @Body() dto: RejectDriverApplicationDto,
+  ) {
+    return this.driverApplicationsService.rejectForAdmin(
+      id,
+      user._id.toString(),
+      dto,
+    );
+  }
+
+  @Get('admin/vehicles')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
+  listVehiclesForAdmin() {
+    return this.driverApplicationsService.listVehiclesForAdmin();
+  }
+
+  @Post('admin/vehicles')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
+  createVehicleForAdmin(@Body() dto: CreateAdminCompanyVehicleDto) {
+    return this.driverApplicationsService.createVehicleForAdmin(dto);
+  }
+
+  @Patch('admin/vehicles/:id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
+  updateVehicleForAdmin(
+    @Param('id') id: string,
+    @Body() dto: UpdateAdminCompanyVehicleDto,
+  ) {
+    return this.driverApplicationsService.updateVehicleForAdmin(id, dto);
+  }
+
+  @Patch('admin/vehicles/:id/deactivate')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
+  deactivateVehicleForAdmin(@Param('id') id: string) {
+    return this.driverApplicationsService.deactivateVehicleForAdmin(id);
+  }
+
+  @Patch('admin/vehicles/:id/activate')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
+  activateVehicleForAdmin(@Param('id') id: string) {
+    return this.driverApplicationsService.activateVehicleForAdmin(id);
   }
 }

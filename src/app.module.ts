@@ -16,6 +16,8 @@ import configuration from './config/configuration';
 import { AgenciesModule } from './modules/agencies/agencies.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { BranchesModule } from './modules/branches/branches.module';
+import { BranchLogisticsModule } from './modules/branch-logistics/branch-logistics.module';
+import { BranchWalletModule } from './modules/branch-wallet/branch-wallet.module';
 import { DriverApplicationsModule } from './modules/driver-applications/driver-applications.module';
 
 @Module({
@@ -37,6 +39,8 @@ import { DriverApplicationsModule } from './modules/driver-applications/driver-a
     PackagesModule,
     AgenciesModule,
     BranchesModule,
+    BranchWalletModule,
+    BranchLogisticsModule,
     AdminModule,
     DriverApplicationsModule,
   ],
