@@ -19,6 +19,10 @@ import { BranchesModule } from './modules/branches/branches.module';
 import { DriverApplicationsModule } from './modules/driver-applications/driver-applications.module';
 import { DriversModule } from './modules/drivers/drivers.module';
 import { ChatModule } from './modules/chat/chat.module';
+import { DeliveriesModule } from './modules/deliveries/deliveries.module';
+import { DispatchModule } from './modules/dispatch/dispatch.module';
+import { TrackingModule } from './modules/tracking/tracking.module';
+import { MqttModule } from './modules/mqtt/mqtt.module';
 
 @Module({
   imports: [
@@ -43,6 +47,10 @@ import { ChatModule } from './modules/chat/chat.module';
     DriverApplicationsModule,
     DriversModule,
     ChatModule,
+    DeliveriesModule,
+    DispatchModule,
+    TrackingModule,
+    MqttModule,
   ],
   controllers: [AppController],
   providers: [AppService],

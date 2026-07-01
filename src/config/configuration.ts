@@ -35,4 +35,17 @@ export default () => ({
     apiKey: process.env.CLOUDINARY_API_KEY,
     apiSecret: process.env.CLOUDINARY_API_SECRET,
   },
+
+  osrm: {
+    url: process.env.OSRM_URL ?? 'http://localhost:5000',
+  },
+
+  solver: {
+    url: process.env.SOLVER_URL ?? 'http://localhost:8000',
+  },
+
+  mqtt: {
+    host: process.env.MQTT_HOST ?? 'mqtt://localhost:1883',
+    clientId: process.env.MQTT_CLIENT_ID ?? 'chonhchoun_api',
+  },
 });
