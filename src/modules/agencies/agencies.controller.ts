@@ -28,5 +28,4 @@ export class AgenciesController {
   updateBranch(@Param('id') id: string, @Body() dto: UpdateBranchDto) {
     return this.agenciesService.updateBranch(id, dto);
   }
-
 }

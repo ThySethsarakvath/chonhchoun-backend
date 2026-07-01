@@ -38,12 +38,21 @@ export class RegistrationService {
     private readonly authService: AuthService,
   ) {}
 
+  private normalizeVehicleType(
+    vehicleType: string | null | undefined,
+  ): string | null {
+    if (!vehicleType) return null;
+    return vehicleType === 'TRUCK_SMALL' ? 'TRUCK' : vehicleType;
+  }
+
   async initiate(dto: InitiateRegisterDto): Promise<{ message: string }> {
     const phone = normalisePhone(dto.phone); // always store as +855XXXXXXXXX
 
     const emailTaken = await this.userModel.findOne({ email: dto.email });
     if (emailTaken) {
-      throw new ConflictException('This email is already registered. Please log in.');
+      throw new ConflictException(
+        'This email is already registered. Please log in.',
+      );
     }
 
     const phoneTaken = await this.userModel.findOne({ phone });
@@ -78,8 +87,13 @@ export class RegistrationService {
     return { message: 'A verification PIN has been sent to your email.' };
   }
 
-  async verifyEmail(dto: VerifyEmailDto): Promise<{ setupToken: string; expiresIn: number }> {
-    const attempts = await this.redisService.getOtpAttempts(dto.email, OTP_PURPOSE);
+  async verifyEmail(
+    dto: VerifyEmailDto,
+  ): Promise<{ setupToken: string; expiresIn: number }> {
+    const attempts = await this.redisService.getOtpAttempts(
+      dto.email,
+      OTP_PURPOSE,
+    );
     if (attempts >= OTP_MAX_ATTEMPTS) {
       throw new UnauthorizedException(
         'Too many incorrect attempts. Please request a new PIN.',
@@ -116,7 +130,9 @@ export class RegistrationService {
     await this.redisService.deleteOtp(dto.email, OTP_PURPOSE);
     await this.redisService.resetOtpAttempts(dto.email, OTP_PURPOSE);
 
-    const pendingRaw = await this.redisService.get(`pending_register:${dto.email}`);
+    const pendingRaw = await this.redisService.get(
+      `pending_register:${dto.email}`,
+    );
     const pending = pendingRaw
       ? (JSON.parse(pendingRaw) as { name: string; phone: string })
       : { name: '', phone: '' };
@@ -125,7 +141,11 @@ export class RegistrationService {
     await this.redisService.saveVerificationToken(
       setupToken,
       SETUP_TOKEN_PURPOSE,
-      JSON.stringify({ email: dto.email, name: pending.name, phone: pending.phone }),
+      JSON.stringify({
+        email: dto.email,
+        name: pending.name,
+        phone: pending.phone,
+      }),
     );
     await this.redisService.expire(
       `verify:${SETUP_TOKEN_PURPOSE}:${setupToken}`,
@@ -165,7 +185,9 @@ export class RegistrationService {
 
     const existing = await this.userModel.findOne({ email });
     if (existing) {
-      throw new ConflictException('This email was just registered. Please log in.');
+      throw new ConflictException(
+        'This email was just registered. Please log in.',
+      );
     }
 
     const hashed = await bcrypt.hash(dto.password, 10);
@@ -180,7 +202,10 @@ export class RegistrationService {
       avatarPublicId: null,
     });
 
-    await this.redisService.deleteVerificationToken(dto.setupToken, SETUP_TOKEN_PURPOSE);
+    await this.redisService.deleteVerificationToken(
+      dto.setupToken,
+      SETUP_TOKEN_PURPOSE,
+    );
     await this.redisService.del(`pending_register:${email}`);
 
     const tokens = await this.authService.issueTokensForUser(user);
@@ -199,6 +224,8 @@ export class RegistrationService {
       email: user.email,
       phone: user.phone,
       role: user.role,
+      vehicleType: this.normalizeVehicleType(user.vehicleType),
+      assignedVehicleCode: user.assignedVehicleCode ?? null,
       isActive: user.isActive,
       avatarUrl: user.avatarUrl,
       createdAt: (user as any).createdAt,

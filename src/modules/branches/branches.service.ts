@@ -70,7 +70,7 @@ export class BranchesService implements OnModuleInit {
       name: `Branch ${branchNumber}`,
       branchNumber,
       code: `BRANCH_${branchNumber}`,
-      ownerId: user._id as Types.ObjectId,
+      ownerId: user._id,
       phone: dto.phone.trim(),
       address: dto.address.trim(),
       branchOwnerSince,
@@ -110,7 +110,8 @@ export class BranchesService implements OnModuleInit {
           filter: { _id: branch._id },
           update: {
             $set: {
-              branchOwnerSince: branch.createdAt ?? branch.updatedAt ?? new Date(),
+              branchOwnerSince:
+                branch.createdAt ?? branch.updatedAt ?? new Date(),
             },
           },
         },

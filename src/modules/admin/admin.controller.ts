@@ -1,4 +1,12 @@
-import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import { Role } from '../../common/enum/role.enum';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/decorators/roles.decorators';
@@ -9,6 +17,8 @@ import { CreateBranchDto } from '../agencies/dto/create-branch.dto';
 import { UpdateBranchDto } from '../agencies/dto/update-branch.dto';
 import { UpgradeBranchOwnerDto } from './dto/upgrade-branch-owner.dto';
 import { AdminService } from './admin.service';
+import { RevenueSharingService } from './revenue-sharing.service';
+import { UpdateRevenueSharingDto } from './dto/update-revenue-sharing.dto';
 
 @Controller('admin')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -17,11 +27,30 @@ export class AdminController {
   constructor(
     private readonly agenciesService: AgenciesService,
     private readonly adminService: AdminService,
+    private readonly revenueSharingService: RevenueSharingService,
   ) {}
 
   @Get('overview')
   getOverview() {
     return this.agenciesService.getAdminOverview();
+  }
+
+  @Get('revenue-sharing/current')
+  getCurrentRevenueSharing() {
+    return this.revenueSharingService.getCurrentConfig();
+  }
+
+  @Get('revenue-sharing/history')
+  getRevenueSharingHistory() {
+    return this.revenueSharingService.listConfigs();
+  }
+
+  @Post('revenue-sharing')
+  updateRevenueSharing(
+    @Body() dto: UpdateRevenueSharingDto,
+    @CurrentUser() user: any,
+  ) {
+    return this.revenueSharingService.createNewVersion(dto, user);
   }
 
   @Get('branches')

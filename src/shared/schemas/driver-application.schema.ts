@@ -1,6 +1,7 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Schema as MongooseSchema, Types } from 'mongoose';
 import { DriverApplicationStatus } from '../../common/enum/driver-application-status.enum';
+import { VehicleType } from '../../common/enum/package.enum';
 
 export type DriverApplicationDocument = DriverApplication & Document;
 
@@ -20,6 +21,9 @@ export const UploadedAssetSchema = SchemaFactory.createForClass(UploadedAsset);
 
 @Schema({ timestamps: true })
 export class DriverApplication {
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User', default: null })
+  applicantUserId?: Types.ObjectId | null;
+
   @Prop({ required: true, trim: true })
   name: string;
 
@@ -35,6 +39,24 @@ export class DriverApplication {
   @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Branch', required: true })
   branchId: Types.ObjectId;
 
+  @Prop({ type: String, enum: VehicleType, default: null })
+  vehicleType: VehicleType | null;
+
+  @Prop({ type: String, trim: true, default: null })
+  assignedVehicleCode: string | null;
+
+  @Prop({ type: String, trim: true, default: null })
+  plateNumber?: string | null;
+
+  @Prop({ type: Number, default: null })
+  maxWeightKg?: number | null;
+
+  @Prop({ type: Number, default: null })
+  maxVolumeM3?: number | null;
+
+  @Prop({ type: Number, default: null })
+  maxPackageCount?: number | null;
+
   @Prop({ type: UploadedAssetSchema, required: true })
   avatar: UploadedAsset;
 
@@ -44,8 +66,8 @@ export class DriverApplication {
   @Prop({ type: UploadedAssetSchema, required: true })
   nationalId: UploadedAsset;
 
-  @Prop({ type: UploadedAssetSchema, required: true })
-  drivingLicense: UploadedAsset;
+  @Prop({ type: UploadedAssetSchema, default: null })
+  drivingLicense: UploadedAsset | null;
 
   @Prop({
     type: String,

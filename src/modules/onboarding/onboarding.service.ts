@@ -6,7 +6,10 @@ import {
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import { Onboarding, OnboardingDocument } from '../../shared/schemas/onboarding.schema';
+import {
+  Onboarding,
+  OnboardingDocument,
+} from '../../shared/schemas/onboarding.schema';
 import { CloudinaryService } from '../database/cloudinary/cloudinary.service';
 import { CreateOnboardingDto } from './dto/create-onboarding.dto';
 import { UpdateOnboardingDto } from './dto/update-onboarding.dto';
@@ -25,7 +28,7 @@ export class OnboardingService {
   async findAll(): Promise<OnboardingDocument[]> {
     return this.onboardingModel
       .find({ isActive: true })
-      .sort({ order: 1 })  // returns slides in display order
+      .sort({ order: 1 }) // returns slides in display order
       .exec();
   }
 
@@ -64,7 +67,7 @@ export class OnboardingService {
     this.logger.log(`Onboarding slide created: ${slide._id}`);
     return slide;
   }
-  
+
   async update(
     id: string,
     dto: UpdateOnboardingDto,

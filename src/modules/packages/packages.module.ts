@@ -2,10 +2,7 @@ import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { PackagesService } from './packages.service';
 import { PackagesController } from './packages.controller';
-import {
-  Package,
-  PackageSchema,
-} from '../../shared/schemas/package.schema';
+import { Package, PackageSchema } from '../../shared/schemas/package.schema';
 import { User, UserSchema } from '../../shared/schemas/user.schema';
 import { AuthModule } from '../auth/auth.module';
 

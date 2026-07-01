@@ -1,5 +1,11 @@
 import { Transform } from 'class-transformer';
-import { IsBoolean, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
+import {
+  IsBoolean,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  MaxLength,
+} from 'class-validator';
 
 export class CreateBranchDto {
   @IsString()
@@ -12,7 +18,7 @@ export class CreateBranchDto {
   @IsNotEmpty()
   @MaxLength(20)
   code: string;
-  
+
   @IsOptional()
   @IsString()
   @MaxLength(255)

@@ -4,7 +4,6 @@ import { ConfigService } from '@nestjs/config';
 import { AppModule } from './app.module';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 
-
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
   const app = await NestFactory.create(AppModule);
@@ -28,7 +27,6 @@ async function bootstrap() {
     allowedHeaders: ['Content-Type', 'Authorization'],
   });
 
-
   const swaggerConfig = new DocumentBuilder()
     .setTitle('Chonh Choun API')
     .setDescription(
@@ -38,15 +36,8 @@ async function bootstrap() {
     .addBearerAuth()
     .build();
 
-  const swaggerDocument = SwaggerModule.createDocument(
-    app,
-    swaggerConfig,
-  );
-  SwaggerModule.setup(
-    'api/docs',
-    app,
-    swaggerDocument,
-  );
+  const swaggerDocument = SwaggerModule.createDocument(app, swaggerConfig);
+  SwaggerModule.setup('api/docs', app, swaggerDocument);
 
   const configService = app.get(ConfigService);
   const port = configService.get<number>('port') ?? 3000;
