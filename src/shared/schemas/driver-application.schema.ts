@@ -21,6 +21,9 @@ export const UploadedAssetSchema = SchemaFactory.createForClass(UploadedAsset);
 
 @Schema({ timestamps: true })
 export class DriverApplication {
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User', default: null })
+  applicantUserId?: Types.ObjectId | null;
+
   @Prop({ required: true, trim: true })
   name: string;
 

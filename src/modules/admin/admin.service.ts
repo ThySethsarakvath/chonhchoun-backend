@@ -27,6 +27,14 @@ export class AdminService {
     return vehicleType === 'TRUCK_SMALL' ? 'TRUCK' : vehicleType;
   }
 
+  private ensureUserHasRequiredFields(user: UserDocument) {
+    if (!user.phone) {
+      throw new BadRequestException(
+        'This user cannot be updated by admin because the account is missing a phone number. Add a valid phone number first.',
+      );
+    }
+  }
+
   async findAllUsers() {
     const users = await this.userModel.find().sort({ createdAt: -1 }).exec();
     return users.map((user) => this.toAdminUser(user));
@@ -59,6 +67,7 @@ export class AdminService {
       );
     }
 
+    this.ensureUserHasRequiredFields(user);
     user.role = Role.BRANCH_OWNER;
     await user.save();
 
@@ -112,6 +121,7 @@ export class AdminService {
 
     const branch = await this.branchesService.suspendBranchByOwnerId(user._id);
 
+    this.ensureUserHasRequiredFields(user);
     user.role = Role.CUSTOMER;
     await user.save();
 

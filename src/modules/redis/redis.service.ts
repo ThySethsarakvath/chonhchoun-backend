@@ -29,6 +29,7 @@ export const RedisKey = {
 @Injectable()
 export class RedisService implements OnModuleDestroy {
   private readonly logger = new Logger(RedisService.name);
+  private isRedisHealthy = true;
 
   constructor(@Inject(REDIS_CLIENT) private readonly redis: Redis) {}
 
@@ -39,170 +40,136 @@ export class RedisService implements OnModuleDestroy {
   async ping(): Promise<boolean> {
     try {
       const result = await this.redis.ping();
+      this.isRedisHealthy = true;
       return result === 'PONG';
-    } catch (err: any) {
-      this.logger.warn(`Redis ping failed: ${err.message}`);
+    } catch {
+      this.isRedisHealthy = false;
       return false;
+    }
+  }
+
+  private handleRedisError(error: unknown, operation: string) {
+    this.isRedisHealthy = false;
+    const message = error instanceof Error ? error.message : String(error);
+    this.logger.warn(`Redis ${operation} failed: ${message}`);
+  }
+
+  private async safe<T>(
+    operation: string,
+    action: () => Promise<T>,
+    fallback: T,
+  ): Promise<T> {
+    try {
+      const result = await action();
+      this.isRedisHealthy = true;
+      return result;
+    } catch (error) {
+      this.handleRedisError(error, operation);
+      return fallback;
     }
   }
 
   async set(key: string, value: string, ttlSeconds?: number): Promise<void> {
-    try {
-      if (ttlSeconds) {
-        await this.redis.setex(key, ttlSeconds, value);
-      } else {
-        await this.redis.set(key, value);
-      }
-    } catch (err: any) {
-      this.logger.warn(`Redis set failed for key ${key}: ${err.message}`);
-    }
+    await this.safe(
+      'set',
+      async () => {
+        if (ttlSeconds) {
+          await this.redis.setex(key, ttlSeconds, value);
+        } else {
+          await this.redis.set(key, value);
+        }
+      },
+      undefined,
+    );
   }
 
   async get(key: string): Promise<string | null> {
-    try {
-      return await this.redis.get(key);
-    } catch (err: any) {
-      this.logger.warn(`Redis get failed for key ${key}: ${err.message}`);
-      return null;
-    }
+    return this.safe('get', () => this.redis.get(key), null);
   }
 
   async del(...keys: string[]): Promise<void> {
-    try {
-      if (keys.length > 0) await this.redis.del(...keys);
-    } catch (err: any) {
-      this.logger.warn(`Redis del failed: ${err.message}`);
-    }
+    if (keys.length === 0) return;
+    await this.safe('del', async () => {
+      await this.redis.del(...keys);
+    }, undefined);
   }
 
   async exists(key: string): Promise<boolean> {
-    try {
-      const result = await this.redis.exists(key);
-      return result === 1;
-    } catch (err: any) {
-      this.logger.warn(`Redis exists failed for key ${key}: ${err.message}`);
-      return false;
-    }
+    const result = await this.safe('exists', () => this.redis.exists(key), 0);
+    return result === 1;
   }
 
   async ttl(key: string): Promise<number> {
-    try {
-      return await this.redis.ttl(key);
-    } catch (err: any) {
-      this.logger.warn(`Redis ttl failed for key ${key}: ${err.message}`);
-      return -2;
-    }
+    return this.safe('ttl', () => this.redis.ttl(key), -1);
   }
 
   async expire(key: string, ttlSeconds: number): Promise<void> {
-    try {
+    await this.safe('expire', async () => {
       await this.redis.expire(key, ttlSeconds);
-    } catch (err: any) {
-      this.logger.warn(`Redis expire failed for key ${key}: ${err.message}`);
-    }
+    }, undefined);
   }
 
   // Pattern operations
   async keys(pattern: string): Promise<string[]> {
-    try {
-      return await this.redis.keys(pattern);
-    } catch (err: any) {
-      this.logger.warn(`Redis keys failed for pattern ${pattern}: ${err.message}`);
-      return [];
-    }
+    return this.safe('keys', () => this.redis.keys(pattern), []);
   }
 
   async delByPattern(pattern: string): Promise<void> {
-    try {
-      const keys = await this.redis.keys(pattern);
-      if (keys.length > 0) await this.redis.del(...keys);
-      this.logger.debug(`Deleted ${keys.length} keys matching: ${pattern}`);
-    } catch (err: any) {
-      this.logger.warn(`Redis delByPattern failed for pattern ${pattern}: ${err.message}`);
-    }
+    const keys = await this.redis.keys(pattern);
+    if (keys.length > 0) await this.redis.del(...keys);
+    this.logger.debug(`Deleted ${keys.length} keys matching: ${pattern}`);
   }
 
   // Counter operations (for rate limiting / OTP attempts)
   async increment(key: string): Promise<number> {
-    try {
-      return await this.redis.incr(key);
-    } catch (err: any) {
-      this.logger.warn(`Redis incr failed for key ${key}: ${err.message}`);
-      return 0;
-    }
+    return this.safe('increment', () => this.redis.incr(key), 0);
   }
 
   async incrementWithTTL(key: string, ttlSeconds: number): Promise<number> {
-    try {
+    return this.safe('incrementWithTTL', async () => {
       const pipeline = this.redis.pipeline();
       pipeline.incr(key);
       pipeline.expire(key, ttlSeconds);
       const results = await pipeline.exec();
       return (results?.[0]?.[1] as number) ?? 0;
-    } catch (err: any) {
-      this.logger.warn(`Redis incrementWithTTL failed for key ${key}: ${err.message}`);
-      return 0;
-    }
+    }, 0);
   }
 
   async hset(key: string, data: Record<string, string>): Promise<void> {
-    try {
+    await this.safe('hset', async () => {
       await this.redis.hset(key, data);
-    } catch (err: any) {
-      this.logger.warn(`Redis hset failed for key ${key}: ${err.message}`);
-    }
+    }, undefined);
   }
 
   async hget(key: string, field: string): Promise<string | null> {
-    try {
-      return await this.redis.hget(key, field);
-    } catch (err: any) {
-      this.logger.warn(`Redis hget failed for key ${key}, field ${field}: ${err.message}`);
-      return null;
-    }
+    return this.safe('hget', () => this.redis.hget(key, field), null);
   }
 
   async hgetall(key: string): Promise<Record<string, string> | null> {
-    try {
-      const data = await this.redis.hgetall(key);
-      return Object.keys(data).length ? data : null;
-    } catch (err: any) {
-      this.logger.warn(`Redis hgetall failed for key ${key}: ${err.message}`);
-      return null;
-    }
+    const data = await this.safe('hgetall', () => this.redis.hgetall(key), {});
+    return Object.keys(data).length ? data : null;
   }
 
   async hdel(key: string, ...fields: string[]): Promise<void> {
-    try {
+    await this.safe('hdel', async () => {
       await this.redis.hdel(key, ...fields);
-    } catch (err: any) {
-      this.logger.warn(`Redis hdel failed: ${err.message}`);
-    }
+    }, undefined);
   }
 
   async sadd(key: string, ...members: string[]): Promise<void> {
-    try {
+    await this.safe('sadd', async () => {
       await this.redis.sadd(key, ...members);
-    } catch (err: any) {
-      this.logger.warn(`Redis sadd failed: ${err.message}`);
-    }
+    }, undefined);
   }
 
   async smembers(key: string): Promise<string[]> {
-    try {
-      return await this.redis.smembers(key);
-    } catch (err: any) {
-      this.logger.warn(`Redis smembers failed for key ${key}: ${err.message}`);
-      return [];
-    }
+    return this.safe('smembers', () => this.redis.smembers(key), []);
   }
 
   async srem(key: string, ...members: string[]): Promise<void> {
-    try {
+    await this.safe('srem', async () => {
       await this.redis.srem(key, ...members);
-    } catch (err: any) {
-      this.logger.warn(`Redis srem failed: ${err.message}`);
-    }
+    }, undefined);
   }
 
   //  HIGH-LEVEL DOMAIN METHODS
@@ -225,6 +192,7 @@ export class RedisService implements OnModuleDestroy {
     userId: string,
     tokenId: string,
   ): Promise<string | null> {
+    if (!this.isRedisHealthy) return null;
     return this.get(RedisKey.refreshToken(userId, tokenId));
   }
 

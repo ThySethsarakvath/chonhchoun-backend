@@ -16,6 +16,8 @@ import configuration from './config/configuration';
 import { AgenciesModule } from './modules/agencies/agencies.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { BranchesModule } from './modules/branches/branches.module';
+import { BranchLogisticsModule } from './modules/branch-logistics/branch-logistics.module';
+import { BranchWalletModule } from './modules/branch-wallet/branch-wallet.module';
 import { DriverApplicationsModule } from './modules/driver-applications/driver-applications.module';
 import { DriversModule } from './modules/drivers/drivers.module';
 import { ChatModule } from './modules/chat/chat.module';
@@ -43,6 +45,8 @@ import { MqttModule } from './modules/mqtt/mqtt.module';
     PackagesModule,
     AgenciesModule,
     BranchesModule,
+    BranchWalletModule,
+    BranchLogisticsModule,
     AdminModule,
     DriverApplicationsModule,
     DriversModule,
