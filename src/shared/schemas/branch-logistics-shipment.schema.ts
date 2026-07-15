@@ -131,6 +131,9 @@ export class BranchLogisticsShipment {
   @Prop({ type: String, default: null, trim: true })
   notes?: string | null;
 
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'DispatchReceipt', default: null })
+  dispatchReceiptId?: Types.ObjectId | null;
+
   @Prop({ type: Date, default: null })
   receivedAtSenderWarehouseAt?: Date | null;
 

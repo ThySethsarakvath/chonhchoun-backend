@@ -25,6 +25,7 @@ import { DeliveriesModule } from './modules/deliveries/deliveries.module';
 import { DispatchModule } from './modules/dispatch/dispatch.module';
 import { TrackingModule } from './modules/tracking/tracking.module';
 import { MqttModule } from './modules/mqtt/mqtt.module';
+import { DispatchReceiptModule } from './modules/dispatch-receipt/dispatch-receipt.module';
 
 @Module({
   imports: [
@@ -55,6 +56,7 @@ import { MqttModule } from './modules/mqtt/mqtt.module';
     DispatchModule,
     TrackingModule,
     MqttModule,
+    DispatchReceiptModule,
   ],
   controllers: [AppController],
   providers: [AppService],
