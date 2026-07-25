@@ -42,6 +42,9 @@ const PHNOM_PENH_CENTER = { latitude: 11.5564, longitude: 104.9282 };
 const EXPRESS_SERVICE_RADIUS_KM = 30;
 const DEFAULT_BROADCAST_RADIUS_KM = 8;
 const BROADCAST_DURATION_MS = 5 * 60 * 1000;
+const EXPRESS_SIMULATION_SPEED_KMH = 75;
+const MIN_SIMULATION_DURATION_SECONDS = 15;
+const MAX_SIMULATION_DURATION_SECONDS = 3600;
 
 // Shape of req.user injected by JwtStrategy
 interface RequestUser {
@@ -382,7 +385,7 @@ export class PackagesService {
     return { message: 'Package deleted.' };
   }
 
-  async findAvailable(driverId: string): Promise<PackageDocument[]> {
+  async findAvailable(driverId: string) {
     const driver = await this.getAvailableExpressDriver(driverId);
     const location = driver.driverProfile!.currentLocation!;
     const vehicleTypes = this.compatibleRequestVehicleTypes(driver);
@@ -399,15 +402,25 @@ export class PackagesService {
       })
       .populate('customerId', 'name email phone avatarUrl')
       .exec();
-    return packages.filter((pkg) => {
-      const distance = haversineKm(
-        location.lat,
-        location.lng,
-        pkg.pickup.latitude,
-        pkg.pickup.longitude,
-      );
-      return distance <= (pkg.broadcastRadiusKm || DEFAULT_BROADCAST_RADIUS_KM);
-    });
+    return packages
+      .filter((pkg) => {
+        const distance = haversineKm(
+          location.lat,
+          location.lng,
+          pkg.pickup.latitude,
+          pkg.pickup.longitude,
+        );
+        return (
+          distance <= (pkg.broadcastRadiusKm || DEFAULT_BROADCAST_RADIUS_KM)
+        );
+      })
+      .map((pkg) => ({
+        ...pkg.toObject(),
+        driverStartLocation: {
+          latitude: location.lat,
+          longitude: location.lng,
+        },
+      }));
   }
 
   async acceptPackage(
@@ -518,6 +531,9 @@ export class PackagesService {
               deliveryRoutePoints: deliveryRoute.points,
               deliveryRouteDistanceMeters: deliveryRoute.distanceMeters,
               deliveryRouteDurationSeconds: deliveryRoute.durationSeconds,
+              simulationDurationSeconds: this.simulationDurationForDistance(
+                pickupRoute.distanceMeters,
+              ),
               simulationProgress: 0,
               simulationPhaseStartedAt: acceptedAt,
             },
@@ -629,6 +645,9 @@ export class PackagesService {
       }
       pkg.status = BookingStatus.IN_TRANSIT;
       pkg.pickedUpAt = now;
+      pkg.simulationDurationSeconds = this.simulationDurationForDistance(
+        pkg.deliveryRouteDistanceMeters,
+      );
       pkg.simulationProgress = 0;
       pkg.simulationPhaseStartedAt = now;
     } else {
@@ -948,6 +967,22 @@ export class PackagesService {
     await driver.save();
     this.logger.log(
       `Added ${earnings} to driver ${driver._id} and made the driver available.`,
+    );
+  }
+
+  private simulationDurationForDistance(
+    distanceMeters: number | null | undefined,
+  ): number {
+    if (!distanceMeters || distanceMeters <= 0) {
+      return MIN_SIMULATION_DURATION_SECONDS;
+    }
+    const metersPerSecond = (EXPRESS_SIMULATION_SPEED_KMH * 1000) / 3600;
+    return Math.min(
+      MAX_SIMULATION_DURATION_SECONDS,
+      Math.max(
+        MIN_SIMULATION_DURATION_SECONDS,
+        Math.round(distanceMeters / metersPerSecond),
+      ),
     );
   }
 

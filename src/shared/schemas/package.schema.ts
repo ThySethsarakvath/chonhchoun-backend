@@ -171,7 +171,7 @@ export class Package {
   @Prop({ type: Number, default: null })
   deliveryRouteDurationSeconds: number | null;
 
-  @Prop({ type: Number, default: 30, min: 10, max: 300 })
+  @Prop({ type: Number, default: 30, min: 10, max: 3600 })
   simulationDurationSeconds: number;
 
   @Prop({ type: Number, default: 0, min: 0, max: 1 })
