@@ -58,7 +58,7 @@ export class DispatchReceiptService {
     return this.receiptModel.populate(docs, [
       {
         path: 'sourceBranchId',
-        select: 'name branchNumber code address',
+        select: 'name branchNumber code address location latitude longitude',
       },
       {
         path: 'driverId',
@@ -70,7 +70,7 @@ export class DispatchReceiptService {
       },
       {
         path: 'stops.destinationBranchId',
-        select: 'name branchNumber code address',
+        select: 'name branchNumber code address location latitude longitude',
       },
       {
         path: 'stops.shipmentIds',
@@ -104,6 +104,151 @@ export class DispatchReceiptService {
     const date = `${String(now.getFullYear()).slice(-2)}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
     const seq = Date.now().toString().slice(-6);
     return `DR-${code}-${date}-${seq}`;
+  }
+
+  private getStopProgress(
+    receipt: DispatchReceiptDocument,
+    stopOrder: number,
+  ): number {
+    const orderedStops = [...receipt.stops].sort(
+      (left, right) => left.stopOrder - right.stopOrder,
+    );
+    const stopIndex = orderedStops.findIndex(
+      (stop) => stop.stopOrder === stopOrder,
+    );
+    if (stopIndex < 0) return 0;
+
+    const routeProgress = orderedStops[stopIndex].routeProgress;
+    if (typeof routeProgress === 'number') {
+      return Math.min(1, Math.max(0.05, routeProgress));
+    }
+
+    const estimatedArrival = orderedStops[stopIndex].estimatedArrivalSeconds;
+    const totalDuration = receipt.estimatedDurationSeconds;
+    const progress =
+      typeof estimatedArrival === 'number' &&
+      typeof totalDuration === 'number' &&
+      totalDuration > 0
+        ? estimatedArrival / totalDuration
+        : (stopIndex + 1) / orderedStops.length;
+    return Math.min(1, Math.max(0.05, progress));
+  }
+
+  private async markStopArrived(
+    receipt: DispatchReceiptDocument,
+    stopOrder: number,
+  ) {
+    const stop = receipt.stops.find(
+      (candidate) => candidate.stopOrder === stopOrder,
+    );
+    if (!stop || stop.status !== DispatchReceiptStopStatus.PENDING) {
+      return;
+    }
+
+    stop.status = DispatchReceiptStopStatus.ARRIVED;
+    stop.arrivedAt = new Date();
+    receipt.simulationProgress = this.getStopProgress(receipt, stopOrder);
+    receipt.simulationSegmentStartedAt = null;
+    await receipt.save();
+
+    await this.shipmentModel.updateMany(
+      { _id: { $in: stop.shipmentIds } },
+      {
+        $set: {
+          status: BranchLogisticsStatus.RECEIVED_AT_RECEIVER_WAREHOUSE,
+          receivedAtReceiverWarehouseAt: stop.arrivedAt,
+        },
+      },
+    );
+  }
+
+  private scopeReceiptForDestination(
+    populatedReceipt: any,
+    destinationBranchId: string,
+  ) {
+    const receipt =
+      typeof populatedReceipt?.toObject === 'function'
+        ? populatedReceipt.toObject()
+        : populatedReceipt;
+    const referenceId = (value: any) =>
+      (value?._id ?? value)?.toString?.() ?? '';
+    const destinationStops = (receipt.stops ?? []).filter(
+      (stop: any) =>
+        referenceId(stop.destinationBranchId) === destinationBranchId,
+    );
+    if (!destinationStops.length) return receipt;
+
+    const ownStop = destinationStops[0];
+    const totalDuration = Number(receipt.estimatedDurationSeconds ?? 0);
+    const estimatedArrival = Number(ownStop.estimatedArrivalSeconds ?? 0);
+    const storedRouteProgress = Number(ownStop.routeProgress ?? 0);
+    const viewerRouteEndProgress =
+      storedRouteProgress > 0
+        ? Math.min(1, Math.max(0.05, storedRouteProgress))
+        : totalDuration > 0
+          ? Math.min(1, Math.max(0.05, estimatedArrival / totalDuration))
+          : Math.min(
+              1,
+              Math.max(
+                0.05,
+                Number(ownStop.stopOrder ?? 1) /
+                  Math.max(1, Number(receipt.stops?.length ?? 1)),
+              ),
+            );
+
+    const destination = ownStop.destinationBranchId;
+    const destinationLatitude =
+      destination?.latitude ?? destination?.location?.lat;
+    const destinationLongitude =
+      destination?.longitude ?? destination?.location?.lng;
+    const routePoints = Array.isArray(receipt.routePoints)
+      ? receipt.routePoints
+      : [];
+    let scopedRoutePoints = routePoints;
+
+    if (
+      routePoints.length >= 2 &&
+      typeof destinationLatitude === 'number' &&
+      typeof destinationLongitude === 'number'
+    ) {
+      let nearestIndex = 0;
+      let nearestDistance = Number.POSITIVE_INFINITY;
+      routePoints.forEach((point: any, index: number) => {
+        const latitudeDifference = Number(point.latitude) - destinationLatitude;
+        const longitudeDifference =
+          Number(point.longitude) - destinationLongitude;
+        const distance =
+          latitudeDifference * latitudeDifference +
+          longitudeDifference * longitudeDifference;
+        if (distance < nearestDistance) {
+          nearestDistance = distance;
+          nearestIndex = index;
+        }
+      });
+      scopedRoutePoints = routePoints.slice(0, nearestIndex + 1);
+    }
+
+    const ownWeight = (ownStop.shipmentIds ?? []).reduce(
+      (sum: number, shipment: any) => sum + Number(shipment?.weightKg ?? 0),
+      0,
+    );
+
+    return {
+      ...receipt,
+      stops: destinationStops,
+      routeGeometry: null,
+      routePoints: scopedRoutePoints,
+      estimatedDurationSeconds:
+        estimatedArrival > 0
+          ? estimatedArrival
+          : receipt.estimatedDurationSeconds,
+      totalDistanceMeters:
+        typeof receipt.totalDistanceMeters === 'number'
+          ? Math.round(receipt.totalDistanceMeters * viewerRouteEndProgress)
+          : null,
+      totalWeightKg: ownWeight,
+      viewerRouteEndProgress,
+    };
   }
 
   // ── Create Dispatch Receipt ──────────────────────────────────────────────
@@ -187,9 +332,7 @@ export class DispatchReceiptService {
       throw new NotFoundException('One or more shipments were not found.');
     }
 
-    const shipmentMap = new Map(
-      shipments.map((s) => [s._id.toString(), s]),
-    );
+    const shipmentMap = new Map(shipments.map((s) => [s._id.toString(), s]));
 
     // Validate each stop
     for (const stopDto of dto.stops) {
@@ -201,9 +344,7 @@ export class DispatchReceiptService {
           `Destination branch for stop ${stopDto.stopOrder} not found.`,
         );
       }
-      if (
-        destBranch._id.toString() === sourceBranch._id.toString()
-      ) {
+      if (destBranch._id.toString() === sourceBranch._id.toString()) {
         throw new BadRequestException(
           `Stop ${stopDto.stopOrder} destination cannot be the same as source branch.`,
         );
@@ -214,16 +355,14 @@ export class DispatchReceiptService {
         if (!shipment) continue;
 
         if (
-          shipment.senderBranchId?.toString() !==
-          sourceBranch._id.toString()
+          shipment.senderBranchId?.toString() !== sourceBranch._id.toString()
         ) {
           throw new BadRequestException(
             `Shipment ${shipment.ticketNumber} does not originate from your branch.`,
           );
         }
         if (
-          shipment.receiverBranchId?.toString() !==
-          destBranch._id.toString()
+          shipment.receiverBranchId?.toString() !== destBranch._id.toString()
         ) {
           throw new BadRequestException(
             `Shipment ${shipment.ticketNumber} receiver branch does not match stop ${stopDto.stopOrder} destination.`,
@@ -253,6 +392,11 @@ export class DispatchReceiptService {
       vehicleId: vehicle._id,
       createdByUserId: new Types.ObjectId(ownerId),
       status: DispatchReceiptStatus.CREATED,
+      planningMethod: 'MANUAL',
+      totalWeightKg: shipments.reduce(
+        (sum, shipment) => sum + (shipment.weightKg ?? 0),
+        0,
+      ),
       stops: dto.stops
         .sort((a, b) => a.stopOrder - b.stopOrder)
         .map((stop) => ({
@@ -275,6 +419,15 @@ export class DispatchReceiptService {
           assignedAt,
           status: BranchLogisticsStatus.ASSIGNED,
           dispatchReceiptId: receipt._id,
+        },
+      },
+    );
+
+    await this.userModel.updateOne(
+      { _id: driver._id },
+      {
+        $set: {
+          availabilityStatus: DriverAvailabilityStatus.ON_TRIP,
         },
       },
     );
@@ -322,7 +475,88 @@ export class DispatchReceiptService {
     return this.populateReceipt(receipt);
   }
 
+  async startSimulation(ownerId: string, receiptId: string) {
+    const branch = await this.getBranchForOwner(ownerId);
+    const receipt = await this.receiptModel.findById(receiptId).exec();
+    if (!receipt) {
+      throw new NotFoundException('Dispatch receipt not found.');
+    }
+    if (receipt.sourceBranchId.toString() !== branch._id.toString()) {
+      throw new BadRequestException(
+        'Only the source branch can start this simulation.',
+      );
+    }
+    if (receipt.status !== DispatchReceiptStatus.IN_TRANSIT) {
+      throw new BadRequestException(
+        'The receipt must depart before its simulation can start.',
+      );
+    }
+    const hasRoute =
+      !!receipt.routeGeometry || (receipt.routePoints?.length ?? 0) >= 2;
+    if (receipt.planningMethod !== 'OPTIMIZED' || !hasRoute) {
+      throw new BadRequestException(
+        'Route simulation is available only for optimized receipts.',
+      );
+    }
+
+    if (!receipt.simulationStartedAt) {
+      const now = new Date();
+      receipt.simulationStartedAt = now;
+      receipt.simulationProgress = 0;
+      receipt.simulationSegmentStartedAt = now;
+      await receipt.save();
+    }
+    return this.populateReceipt(receipt);
+  }
+
   // ── Simulate Arrival at Stop ─────────────────────────────────────────────
+
+  async syncSimulation(ownerId: string, receiptId: string) {
+    const branch = await this.getBranchForOwner(ownerId);
+    const receipt = await this.receiptModel.findById(receiptId).exec();
+    if (!receipt) {
+      throw new NotFoundException('Dispatch receipt not found.');
+    }
+
+    const isSource =
+      receipt.sourceBranchId.toString() === branch._id.toString();
+    const isDestination = receipt.stops.some(
+      (stop) => stop.destinationBranchId.toString() === branch._id.toString(),
+    );
+    if (!isSource && !isDestination) {
+      throw new BadRequestException(
+        'This dispatch receipt does not involve your branch.',
+      );
+    }
+
+    if (
+      receipt.status === DispatchReceiptStatus.IN_TRANSIT &&
+      receipt.simulationSegmentStartedAt
+    ) {
+      const nextStop = [...receipt.stops]
+        .sort((left, right) => left.stopOrder - right.stopOrder)
+        .find((stop) => stop.status === DispatchReceiptStopStatus.PENDING);
+      if (nextStop) {
+        const elapsedSeconds = Math.max(
+          0,
+          (Date.now() - receipt.simulationSegmentStartedAt.getTime()) / 1000,
+        );
+        const simulatedProgress =
+          (receipt.simulationProgress ?? 0) +
+          elapsedSeconds /
+            Math.max(1, receipt.simulationDurationSeconds ?? 120);
+        const stopProgress = this.getStopProgress(receipt, nextStop.stopOrder);
+        if (simulatedProgress >= stopProgress) {
+          await this.markStopArrived(receipt, nextStop.stopOrder);
+        }
+      }
+    }
+
+    const populated = await this.populateReceipt(receipt);
+    return isSource
+      ? populated
+      : this.scopeReceiptForDestination(populated, branch._id.toString());
+  }
 
   async simulateArrivalAtStop(
     ownerId: string,
@@ -357,31 +591,22 @@ export class DispatchReceiptService {
       );
     }
 
-    // Ensure all earlier stops have been arrived at or confirmed
+    // A truck cannot continue past a stop until that destination branch
+    // confirms its own delivery checklist.
     for (const prevStop of receipt.stops) {
       if (prevStop.stopOrder < stopOrder) {
-        if (prevStop.status === DispatchReceiptStopStatus.PENDING) {
+        if (
+          prevStop.status !== DispatchReceiptStopStatus.CONFIRMED &&
+          prevStop.status !== DispatchReceiptStopStatus.PARTIAL
+        ) {
           throw new BadRequestException(
-            `Stop ${prevStop.stopOrder} must be arrived at before stop ${stopOrder}.`,
+            `Stop ${prevStop.stopOrder} must be confirmed before the truck can continue to stop ${stopOrder}.`,
           );
         }
       }
     }
 
-    stop.status = DispatchReceiptStopStatus.ARRIVED;
-    stop.arrivedAt = new Date();
-    await receipt.save();
-
-    // Update shipments at this stop
-    await this.shipmentModel.updateMany(
-      { _id: { $in: stop.shipmentIds } },
-      {
-        $set: {
-          status: BranchLogisticsStatus.RECEIVED_AT_RECEIVER_WAREHOUSE,
-          receivedAtReceiverWarehouseAt: stop.arrivedAt,
-        },
-      },
-    );
+    await this.markStopArrived(receipt, stopOrder);
 
     return this.populateReceipt(receipt);
   }
@@ -463,10 +688,23 @@ export class DispatchReceiptService {
     if (allStopsDone) {
       receipt.status = DispatchReceiptStatus.COMPLETED;
       receipt.completedAt = new Date();
+      receipt.simulationProgress = 1;
+      receipt.simulationSegmentStartedAt = null;
+      await this.userModel.updateOne(
+        { _id: receipt.driverId },
+        {
+          $set: {
+            availabilityStatus: DriverAvailabilityStatus.AVAILABLE,
+          },
+        },
+      );
+    } else {
+      receipt.simulationSegmentStartedAt = new Date();
     }
 
     await receipt.save();
-    return this.populateReceipt(receipt);
+    const populated = await this.populateReceipt(receipt);
+    return this.scopeReceiptForDestination(populated, branch._id.toString());
   }
 
   // ── Cancel ───────────────────────────────────────────────────────────────
@@ -507,15 +745,21 @@ export class DispatchReceiptService {
       },
     );
 
+    await this.userModel.updateOne(
+      { _id: receipt.driverId },
+      {
+        $set: {
+          availabilityStatus: DriverAvailabilityStatus.AVAILABLE,
+        },
+      },
+    );
+
     return this.populateReceipt(receipt);
   }
 
   // ── Queries ──────────────────────────────────────────────────────────────
 
-  async listOutboundReceipts(
-    ownerId: string,
-    query: QueryDispatchReceiptsDto,
-  ) {
+  async listOutboundReceipts(ownerId: string, query: QueryDispatchReceiptsDto) {
     const branch = await this.getBranchForOwner(ownerId);
     const where: Record<string, any> = {
       sourceBranchId: branch._id,
@@ -538,10 +782,7 @@ export class DispatchReceiptService {
     return this.populateReceipt(receipts);
   }
 
-  async listInboundReceipts(
-    ownerId: string,
-    query: QueryDispatchReceiptsDto,
-  ) {
+  async listInboundReceipts(ownerId: string, query: QueryDispatchReceiptsDto) {
     const branch = await this.getBranchForOwner(ownerId);
     const where: Record<string, any> = {
       'stops.destinationBranchId': branch._id,
@@ -561,7 +802,10 @@ export class DispatchReceiptService {
       .sort({ createdAt: -1 })
       .exec();
 
-    return this.populateReceipt(receipts);
+    const populatedReceipts = await this.populateReceipt(receipts);
+    return populatedReceipts.map((receipt) =>
+      this.scopeReceiptForDestination(receipt, branch._id.toString()),
+    );
   }
 
   async getReceipt(ownerId: string, receiptId: string) {
@@ -584,6 +828,12 @@ export class DispatchReceiptService {
       );
     }
 
-    return this.populateReceipt(receipt);
+    const populatedReceipt = await this.populateReceipt(receipt);
+    return isSource
+      ? populatedReceipt
+      : this.scopeReceiptForDestination(
+          populatedReceipt,
+          branch._id.toString(),
+        );
   }
 }

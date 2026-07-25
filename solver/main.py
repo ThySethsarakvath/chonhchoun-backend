@@ -34,10 +34,12 @@ class TimeWindow(BaseModel):
 class StopNode(BaseModel):
     location_index: int        # index into distance_matrix
     demand_kg_x10: int         # total weight demand × 10 (integer for OR-Tools)
+    demand_package_count: int = 0
     time_window: Optional[TimeWindow] = None  # None = no constraint
 
 class VehicleSpec(BaseModel):
     capacity_kg_x10: int       # max weight capacity × 10
+    capacity_package_count: int = 1000000
     shift_start: int = 0       # seconds from midnight
     shift_end: int = 86399
 
@@ -56,6 +58,7 @@ class SolveRequest(BaseModel):
 
     # If True: use minimax (balance routes). If False: minimise total distance.
     balance_routes: Optional[bool] = True
+    minimize_vehicle_count: Optional[bool] = False
 
 class StopResult(BaseModel):
     location_index: int
@@ -175,12 +178,32 @@ def _solve(req: SolveRequest) -> SolveResponse:
         "Capacity",
     )
 
+    package_count_map: dict[int, int] = {0: 0}
+    for stop in req.stops:
+        package_count_map[stop.location_index] = stop.demand_package_count
+
+    def package_count_cb(from_idx):
+        node = manager.IndexToNode(from_idx)
+        return package_count_map.get(node, 0)
+
+    package_count_idx = routing.RegisterUnaryTransitCallback(package_count_cb)
+    routing.AddDimensionWithVehicleCapacity(
+        package_count_idx,
+        0,
+        [v.capacity_package_count for v in req.vehicles],
+        True,
+        "PackageCount",
+    )
+
     # ── 5. Minimax: penalise the longest route (balance workload) ─────────────
     if req.balance_routes:
         # SetGlobalSpanCostCoefficient adds a cost proportional to
         # (max_route_duration - min_route_duration) across all vehicles.
         # This pushes the solver to equalise route lengths.
         time_dim.SetGlobalSpanCostCoefficient(100)
+
+    if req.minimize_vehicle_count:
+        routing.SetFixedCostOfAllVehicles(1_000_000)
 
     # ── 6. Minimum stops per vehicle (force distribution) ────────────────────
     # Each driver must visit at least 1 stop if there are enough stops.
@@ -201,7 +224,7 @@ def _solve(req: SolveRequest) -> SolveResponse:
 
     # Force minimum 1 stop per driver (only if we have enough stops)
     min_stops = max(1, len(req.stops) // n_vehicles)
-    if len(req.stops) >= n_vehicles:
+    if len(req.stops) >= n_vehicles and not req.minimize_vehicle_count:
         for v_idx in range(n_vehicles):
             # Get the actual index of the vehicle's final destination node
             end_node_index = routing.End(v_idx)
@@ -211,7 +234,7 @@ def _solve(req: SolveRequest) -> SolveResponse:
     # ── 7. Drop penalty (expensive but not impossible to drop a stop) ─────────
     # This means the solver tries very hard to include every stop,
     # but can drop one if it's truly infeasible (e.g. overweight for all vehicles)
-    penalty = 1_000_000
+    penalty = 100_000_000 if req.minimize_vehicle_count else 1_000_000
     for stop in req.stops:
         node_idx = manager.NodeToIndex(stop.location_index)
         routing.AddDisjunction([node_idx], penalty)

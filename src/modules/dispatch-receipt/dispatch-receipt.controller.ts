@@ -17,6 +17,12 @@ import { DispatchReceiptService } from './dispatch-receipt.service';
 import { CreateDispatchReceiptDto } from './dto/create-dispatch-receipt.dto';
 import { ConfirmStopReceiptDto } from './dto/confirm-stop-receipt.dto';
 import { QueryDispatchReceiptsDto } from './dto/query-dispatch-receipts.dto';
+import { AutoPlanDispatchReceiptDto } from './dto/auto-plan-dispatch-receipt.dto';
+import { DispatchReceiptPlannerService } from './dispatch-receipt-planner.service';
+
+interface AuthenticatedUser {
+  _id: { toString(): string };
+}
 
 @Controller('dispatch-receipts')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -24,22 +30,28 @@ import { QueryDispatchReceiptsDto } from './dto/query-dispatch-receipts.dto';
 export class DispatchReceiptController {
   constructor(
     private readonly dispatchReceiptService: DispatchReceiptService,
+    private readonly plannerService: DispatchReceiptPlannerService,
   ) {}
+
+  @Post('auto-plan')
+  autoPlan(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: AutoPlanDispatchReceiptDto,
+  ) {
+    return this.plannerService.autoPlan(user._id.toString(), dto);
+  }
 
   @Post()
   createReceipt(
-    @CurrentUser() user: any,
+    @CurrentUser() user: AuthenticatedUser,
     @Body() dto: CreateDispatchReceiptDto,
   ) {
-    return this.dispatchReceiptService.createReceipt(
-      user._id.toString(),
-      dto,
-    );
+    return this.dispatchReceiptService.createReceipt(user._id.toString(), dto);
   }
 
   @Get()
   listOutboundReceipts(
-    @CurrentUser() user: any,
+    @CurrentUser() user: AuthenticatedUser,
     @Query() query: QueryDispatchReceiptsDto,
   ) {
     return this.dispatchReceiptService.listOutboundReceipts(
@@ -50,7 +62,7 @@ export class DispatchReceiptController {
 
   @Get('inbound')
   listInboundReceipts(
-    @CurrentUser() user: any,
+    @CurrentUser() user: AuthenticatedUser,
     @Query() query: QueryDispatchReceiptsDto,
   ) {
     return this.dispatchReceiptService.listInboundReceipts(
@@ -60,32 +72,45 @@ export class DispatchReceiptController {
   }
 
   @Get(':id')
-  getReceipt(@CurrentUser() user: any, @Param('id') id: string) {
-    return this.dispatchReceiptService.getReceipt(
-      user._id.toString(),
-      id,
-    );
+  getReceipt(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.dispatchReceiptService.getReceipt(user._id.toString(), id);
   }
 
   @Patch(':id/depart')
-  departReceipt(@CurrentUser() user: any, @Param('id') id: string) {
-    return this.dispatchReceiptService.departReceipt(
-      user._id.toString(),
-      id,
-    );
+  departReceipt(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+  ) {
+    return this.dispatchReceiptService.departReceipt(user._id.toString(), id);
   }
 
   @Patch(':id/cancel')
-  cancelReceipt(@CurrentUser() user: any, @Param('id') id: string) {
-    return this.dispatchReceiptService.cancelReceipt(
-      user._id.toString(),
-      id,
-    );
+  cancelReceipt(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+  ) {
+    return this.dispatchReceiptService.cancelReceipt(user._id.toString(), id);
+  }
+
+  @Post(':id/simulation/start')
+  startSimulation(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+  ) {
+    return this.dispatchReceiptService.startSimulation(user._id.toString(), id);
+  }
+
+  @Post(':id/simulation/sync')
+  syncSimulation(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+  ) {
+    return this.dispatchReceiptService.syncSimulation(user._id.toString(), id);
   }
 
   @Post(':id/stops/:stopOrder/simulate-arrival')
   simulateArrival(
-    @CurrentUser() user: any,
+    @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
     @Param('stopOrder') stopOrder: string,
   ) {
@@ -98,7 +123,7 @@ export class DispatchReceiptController {
 
   @Patch(':id/stops/:stopOrder/confirm')
   confirmStop(
-    @CurrentUser() user: any,
+    @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
     @Param('stopOrder') stopOrder: string,
     @Body() dto: ConfirmStopReceiptDto,

@@ -14,7 +14,10 @@ import {
   DriverVehicleAssignment,
   DriverVehicleAssignmentSchema,
 } from '../../shared/schemas/driver-vehicle-assignment.schema';
+import { Vehicle, VehicleSchema } from '../../shared/schemas/vehicle.schema';
+import { OsrmService } from '../../shared/osrm/osrm.service';
 import { DispatchReceiptController } from './dispatch-receipt.controller';
+import { DispatchReceiptPlannerService } from './dispatch-receipt-planner.service';
 import { DispatchReceiptService } from './dispatch-receipt.service';
 
 @Module({
@@ -31,10 +34,15 @@ import { DispatchReceiptService } from './dispatch-receipt.service';
         name: DriverVehicleAssignment.name,
         schema: DriverVehicleAssignmentSchema,
       },
+      { name: Vehicle.name, schema: VehicleSchema },
     ]),
   ],
   controllers: [DispatchReceiptController],
-  providers: [DispatchReceiptService],
+  providers: [
+    DispatchReceiptService,
+    DispatchReceiptPlannerService,
+    OsrmService,
+  ],
   exports: [DispatchReceiptService],
 })
 export class DispatchReceiptModule {}

@@ -18,7 +18,9 @@ export class DispatchReceiptStop {
   destinationBranchId: Types.ObjectId;
 
   @Prop({
-    type: [{ type: MongooseSchema.Types.ObjectId, ref: 'BranchLogisticsShipment' }],
+    type: [
+      { type: MongooseSchema.Types.ObjectId, ref: 'BranchLogisticsShipment' },
+    ],
     default: [],
   })
   shipmentIds: Types.ObjectId[];
@@ -33,6 +35,12 @@ export class DispatchReceiptStop {
   @Prop({ type: Date, default: null })
   arrivedAt?: Date | null;
 
+  @Prop({ type: Number, default: null })
+  estimatedArrivalSeconds?: number | null;
+
+  @Prop({ type: Number, default: null })
+  routeProgress?: number | null;
+
   @Prop({ type: Date, default: null })
   confirmedAt?: Date | null;
 
@@ -43,13 +51,17 @@ export class DispatchReceiptStop {
   confirmationNotes?: string | null;
 
   @Prop({
-    type: [{ type: MongooseSchema.Types.ObjectId, ref: 'BranchLogisticsShipment' }],
+    type: [
+      { type: MongooseSchema.Types.ObjectId, ref: 'BranchLogisticsShipment' },
+    ],
     default: [],
   })
   missingShipmentIds: Types.ObjectId[];
 
   @Prop({
-    type: [{ type: MongooseSchema.Types.ObjectId, ref: 'BranchLogisticsShipment' }],
+    type: [
+      { type: MongooseSchema.Types.ObjectId, ref: 'BranchLogisticsShipment' },
+    ],
     default: [],
   })
   damagedShipmentIds: Types.ObjectId[];
@@ -101,6 +113,49 @@ export class DispatchReceipt {
   @Prop({ type: [DispatchReceiptStopSchema], default: [] })
   stops: DispatchReceiptStop[];
 
+  @Prop({
+    type: String,
+    enum: ['MANUAL', 'OPTIMIZED'],
+    default: 'MANUAL',
+  })
+  planningMethod: 'MANUAL' | 'OPTIMIZED';
+
+  @Prop({ type: String, default: null })
+  routeGeometry?: string | null;
+
+  @Prop({
+    type: [
+      {
+        latitude: { type: Number, required: true },
+        longitude: { type: Number, required: true },
+        _id: false,
+      },
+    ],
+    default: [],
+  })
+  routePoints: Array<{ latitude: number; longitude: number }>;
+
+  @Prop({ type: Number, default: null })
+  estimatedDurationSeconds?: number | null;
+
+  @Prop({ type: Number, default: null })
+  totalDistanceMeters?: number | null;
+
+  @Prop({ type: Number, default: 0 })
+  totalWeightKg: number;
+
+  @Prop({ type: Number, default: 120 })
+  simulationDurationSeconds: number;
+
+  @Prop({ type: Date, default: null })
+  simulationStartedAt?: Date | null;
+
+  @Prop({ type: Number, default: 0 })
+  simulationProgress: number;
+
+  @Prop({ type: Date, default: null })
+  simulationSegmentStartedAt?: Date | null;
+
   @Prop({ type: Date, default: null })
   departedAt?: Date | null;
 
@@ -120,6 +175,4 @@ export const DispatchReceiptSchema =
 DispatchReceiptSchema.index({ sourceBranchId: 1, createdAt: -1 });
 DispatchReceiptSchema.index({ driverId: 1, status: 1 });
 DispatchReceiptSchema.index({ status: 1, createdAt: -1 });
-DispatchReceiptSchema.index(
-  { 'stops.destinationBranchId': 1, status: 1 },
-);
+DispatchReceiptSchema.index({ 'stops.destinationBranchId': 1, status: 1 });

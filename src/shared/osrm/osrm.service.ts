@@ -1,10 +1,47 @@
-import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 
 export interface Coordinate {
   latitude: number;
   longitude: number;
+}
+
+export interface OsrmRouteDetails {
+  points: Coordinate[];
+  distanceMeters: number;
+  durationSeconds: number;
+}
+
+interface OsrmTableResponse {
+  code: string;
+  message?: string;
+  durations: Array<Array<number | null>>;
+}
+
+interface OsrmEncodedRouteResponse {
+  code: string;
+  routes?: Array<{
+    geometry: string;
+    distance: number;
+    duration: number;
+  }>;
+}
+
+interface OsrmGeoJsonRouteResponse {
+  code: string;
+  routes?: Array<{
+    geometry: {
+      type: 'LineString';
+      coordinates: Array<[number, number]>;
+    };
+    distance: number;
+    duration: number;
+  }>;
 }
 
 @Injectable()
@@ -16,58 +53,104 @@ export class OsrmService {
     this.baseUrl = config.get<string>('osrm.url')!;
   }
 
-  /**
-   * Build an N×N travel-time matrix (in seconds) from OSRM Table API.
-   * coords[0] = depot, coords[1..N] = destination warehouses.
-   */
   async getDistanceMatrix(coords: Coordinate[]): Promise<number[][]> {
-    // OSRM expects coords as "lng,lat;lng,lat;..."
     const coordStr = coords
-      .map(c => `${c.longitude},${c.latitude}`)
+      .map((coordinate) => `${coordinate.longitude},${coordinate.latitude}`)
       .join(';');
-
     const url = `${this.baseUrl}/table/v1/driving/${coordStr}?annotations=duration`;
 
     this.logger.log(`OSRM table request: ${coords.length} locations`);
 
     try {
-      const { data } = await axios.get(url, { timeout: 30_000 });
-
+      const { data } = await axios.get<OsrmTableResponse>(url, {
+        timeout: 30_000,
+      });
       if (data.code !== 'Ok') {
-        throw new Error(`OSRM error: ${data.code} — ${data.message}`);
+        throw new Error(`OSRM error: ${data.code} - ${data.message}`);
       }
 
-      // duration matrix is in seconds (floats) — round to integers for OR-Tools
-      const matrix: number[][] = data.durations.map((row: number[]) =>
-        row.map((v: number) => Math.round(v)),
+      const matrix: number[][] = data.durations.map((row) =>
+        row.map((duration: number | null) => {
+          if (duration == null) {
+            throw new Error('OSRM returned an unreachable branch pair.');
+          }
+          return Math.round(duration);
+        }),
       );
 
-      this.logger.log(`OSRM matrix received: ${matrix.length}×${matrix.length}`);
+      this.logger.log(
+        `OSRM matrix received: ${matrix.length}x${matrix.length}`,
+      );
       return matrix;
-    } catch (err: any) {
-      this.logger.error(`OSRM table failed: ${err.message}`);
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error ? error.message : 'Unknown OSRM error';
+      this.logger.error(`OSRM table failed: ${message}`);
       throw new ServiceUnavailableException(
-        'Routing service unavailable. Is OSRM running?',
+        'Routing service unavailable or one of the branches is unreachable.',
       );
     }
   }
 
-  /**
-   * Get the route geometry (encoded polyline) for a sequence of coordinates.
-   * Used after VRP solve to store turn-by-turn geometry per driver.
-   */
   async getRouteGeometry(coords: Coordinate[]): Promise<string | null> {
     if (coords.length < 2) return null;
 
-    const coordStr = coords.map(c => `${c.longitude},${c.latitude}`).join(';');
+    const coordStr = coords
+      .map((coordinate) => `${coordinate.longitude},${coordinate.latitude}`)
+      .join(';');
     const url = `${this.baseUrl}/route/v1/driving/${coordStr}?overview=full&geometries=polyline`;
 
     try {
-      const { data } = await axios.get(url, { timeout: 15_000 });
+      const { data } = await axios.get<OsrmEncodedRouteResponse>(url, {
+        timeout: 15_000,
+      });
       if (data.code !== 'Ok' || !data.routes?.[0]) return null;
-      return data.routes[0].geometry; // encoded polyline string
+      return data.routes[0].geometry;
     } catch {
-      return null; // non-fatal — geometry is optional
+      return null;
     }
+  }
+
+  async getRouteDetails(
+    coords: Coordinate[],
+  ): Promise<OsrmRouteDetails | null> {
+    if (coords.length < 2) return null;
+
+    const coordStr = coords
+      .map((coordinate) => `${coordinate.longitude},${coordinate.latitude}`)
+      .join(';');
+    const url = `${this.baseUrl}/route/v1/driving/${coordStr}?overview=full&geometries=geojson`;
+
+    try {
+      const { data } = await axios.get<OsrmGeoJsonRouteResponse>(url, {
+        timeout: 15_000,
+      });
+      if (data.code !== 'Ok' || !data.routes?.[0]) return null;
+
+      const route = data.routes[0];
+      const points = route.geometry.coordinates
+        .map(([longitude, latitude]) => ({ latitude, longitude }))
+        .filter((point) => this.isValidCoordinate(point));
+      if (points.length < 2) return null;
+
+      return {
+        points,
+        distanceMeters: Math.round(route.distance ?? 0),
+        durationSeconds: Math.round(route.duration ?? 0),
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  private isValidCoordinate(coordinate: Coordinate): boolean {
+    return (
+      Number.isFinite(coordinate.latitude) &&
+      Number.isFinite(coordinate.longitude) &&
+      coordinate.latitude >= -90 &&
+      coordinate.latitude <= 90 &&
+      coordinate.longitude >= -180 &&
+      coordinate.longitude <= 180
+    );
   }
 }
