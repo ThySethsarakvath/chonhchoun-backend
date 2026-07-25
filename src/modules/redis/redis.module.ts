@@ -20,8 +20,12 @@ const RedisClientProvider = {
       },
     });
 
-    client.on('connect', () => console.log('[Redis] ✅ Connected successfully'));
-    client.on('error', (err: Error) => console.error('[Redis] ❌ Error:', err.message));
+    client.on('connect', () =>
+      console.log('[Redis] ✅ Connected successfully'),
+    );
+    client.on('error', (err: Error) =>
+      console.error('[Redis] ❌ Error:', err.message),
+    );
 
     return client;
   },

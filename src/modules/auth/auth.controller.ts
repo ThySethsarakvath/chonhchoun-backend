@@ -23,6 +23,13 @@ import { Role } from '../../common/enum/role.enum';
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
+  // POST /api/v1/auth/driver-register (Bypass OTP for driver prototype)
+  @Post('driver-register')
+  @HttpCode(HttpStatus.OK)
+  driverRegister(@Body() dto: any) {
+    return this.authService.driverRegister(dto);
+  }
+
   // POST /api/v1/auth/login
   @Post('login')
   @HttpCode(HttpStatus.OK)
@@ -61,11 +68,11 @@ export class AuthController {
     return { message: `Welcome admin ${user.name}!` };
   }
 
-  // GET /api/v1/auth/driver-agency
-  @Get('driver-agency')
+  // GET /api/v1/auth/driver
+  @Get('driver')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.DRIVER, Role.AGENCY)
-  driverOrAgency(@CurrentUser() user: any) {
+  @Roles(Role.DRIVER)
+  driverOnly(@CurrentUser() user: any) {
     return { message: `Welcome ${user.role}: ${user.name}` };
   }
 }

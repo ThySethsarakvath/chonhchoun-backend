@@ -16,7 +16,8 @@ export default () => ({
     secret: process.env.JWT_SECRET ?? 'dev_secret_replace_in_production',
     expiresIn: process.env.JWT_EXPIRES_IN ?? '15m',
     refreshSecret:
-      process.env.JWT_REFRESH_SECRET ?? 'dev_refresh_secret_replace_in_production',
+      process.env.JWT_REFRESH_SECRET ??
+      'dev_refresh_secret_replace_in_production',
     refreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN ?? '7d',
   },
 
@@ -33,5 +34,18 @@ export default () => ({
     cloudName: process.env.CLOUDINARY_CLOUD_NAME,
     apiKey: process.env.CLOUDINARY_API_KEY,
     apiSecret: process.env.CLOUDINARY_API_SECRET,
+  },
+
+  osrm: {
+    url: process.env.OSRM_URL ?? 'http://localhost:5000',
+  },
+
+  solver: {
+    url: process.env.SOLVER_URL ?? 'http://localhost:8000',
+  },
+
+  mqtt: {
+    host: process.env.MQTT_HOST ?? 'mqtt://localhost:1883',
+    clientId: process.env.MQTT_CLIENT_ID ?? 'chonhchoun_api',
   },
 });

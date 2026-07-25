@@ -1,4 +1,10 @@
-import { IsEmail, IsNotEmpty, IsString, Matches, MaxLength} from 'class-validator';
+import {
+  IsEmail,
+  IsNotEmpty,
+  IsString,
+  Matches,
+  MaxLength,
+} from 'class-validator';
 
 export class InitiateRegisterDto {
   @IsString()

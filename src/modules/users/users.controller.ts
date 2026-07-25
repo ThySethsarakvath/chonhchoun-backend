@@ -13,6 +13,9 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { UsersService } from './users.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import { UpdateDriverStatusDto } from './dto/update-driver-status.dto';
+import { UpdateDriverVehicleTypeDto } from './dto/update-driver-vehicle-type.dto';
+import { UpdateDriverAvailabilityDto } from './dto/update-driver-availability.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/role.guard';
 import { Roles } from '../auth/decorators/roles.decorators';
@@ -29,10 +32,34 @@ export class UsersController {
     return this.usersService.findById(user._id.toString());
   }
 
+  @Get('me/driver-state')
+  getDriverState(@CurrentUser() user: any) {
+    return this.usersService.getDriverState(user._id.toString());
+  }
+
   // PATCH /api/v1/users/me — update name or phone
   @Patch('me')
   updateProfile(@CurrentUser() user: any, @Body() dto: UpdateProfileDto) {
     return this.usersService.updateProfile(user._id.toString(), dto);
+  }
+
+  // PATCH /api/v1/users/me/driver-status — update driver status and location
+  @Patch('me/driver-status')
+  @UseGuards(RolesGuard)
+  @Roles(Role.DRIVER)
+  updateDriverStatus(@CurrentUser() user: any, @Body() dto: UpdateDriverStatusDto) {
+    return this.usersService.updateDriverStatus(user._id.toString(), dto);
+  }
+
+  @Patch('me/availability-status')
+  updateMyDriverAvailability(
+    @CurrentUser() user: any,
+    @Body() dto: UpdateDriverAvailabilityDto,
+  ) {
+    return this.usersService.updateDriverAvailabilityStatus(
+      user._id.toString(),
+      dto.availabilityStatus,
+    );
   }
 
   // POST /api/v1/users/me/avatar — upload or replace profile picture
@@ -62,7 +89,8 @@ export class UsersController {
   removeAvatar(@CurrentUser() user: any) {
     return this.usersService.removeAvatar(user._id.toString());
   }
-  
+
+
   // Admin only
   // GET /api/v1/users
   @Get()
@@ -75,7 +103,7 @@ export class UsersController {
   // GET /api/v1/users/drivers
   @Get('drivers')
   @UseGuards(RolesGuard)
-  @Roles(Role.ADMIN, Role.AGENCY)
+  @Roles(Role.ADMIN)
   findDrivers() {
     return this.usersService.findByRole(Role.DRIVER);
   }
@@ -94,5 +122,16 @@ export class UsersController {
   @Roles(Role.ADMIN)
   deactivate(@Param('id') id: string) {
     return this.usersService.deactivate(id);
+  }
+
+  // PATCH /api/v1/users/:id/vehicle-type
+  @Patch(':id/vehicle-type')
+  @UseGuards(RolesGuard)
+  @Roles(Role.ADMIN)
+  updateDriverVehicleType(
+    @Param('id') id: string,
+    @Body() dto: UpdateDriverVehicleTypeDto,
+  ) {
+    return this.usersService.updateDriverVehicleType(id, dto.vehicleType);
   }
 }

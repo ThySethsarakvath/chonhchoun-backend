@@ -5,10 +5,7 @@ import { AuthModule } from '../auth.module';
 import { MailModule } from '../../mail/mail.module';
 
 @Module({
-  imports: [
-    AuthModule,
-    MailModule,
-  ],
+  imports: [AuthModule, MailModule],
   controllers: [RegistrationController],
   providers: [RegistrationService],
 })

@@ -18,10 +18,10 @@ import { VerifyOtpDto } from '../dto/verify-otp.dto';
 import { ResetPasswordDto } from '../dto/reset-password.dto';
 
 const OTP_PURPOSE = 'password_reset';
-const OTP_TTL = 60 * 10;          // 10 minutes to enter the PIN
-const OTP_MAX_ATTEMPTS = 5;        // 5 wrong attempts → lock
-const RESET_TOKEN_TTL = 60 * 15;  // 15 minutes to submit new password after PIN verified
-const REQUEST_COOLDOWN_TTL = 60;   // must wait 60s before requesting a new PIN
+const OTP_TTL = 60 * 10; // 10 minutes to enter the PIN
+const OTP_MAX_ATTEMPTS = 5; // 5 wrong attempts → lock
+const RESET_TOKEN_TTL = 60 * 15; // 15 minutes to submit new password after PIN verified
+const REQUEST_COOLDOWN_TTL = 60; // must wait 60s before requesting a new PIN
 
 @Injectable()
 export class PasswordService {
@@ -73,9 +73,14 @@ export class PasswordService {
   }
 
   // ── Step 2: Verify OTP ───────────────────────────────────────────────────────
-  async verifyOtp(dto: VerifyOtpDto): Promise<{ resetToken: string; expiresIn: number }> {
+  async verifyOtp(
+    dto: VerifyOtpDto,
+  ): Promise<{ resetToken: string; expiresIn: number }> {
     // Check attempt count first — if locked, don't even look at the PIN
-    const attempts = await this.redisService.getOtpAttempts(dto.email, OTP_PURPOSE);
+    const attempts = await this.redisService.getOtpAttempts(
+      dto.email,
+      OTP_PURPOSE,
+    );
     if (attempts >= OTP_MAX_ATTEMPTS) {
       throw new UnauthorizedException(
         'Too many incorrect attempts. Please request a new PIN.',
@@ -171,7 +176,10 @@ export class PasswordService {
     await this.userModel.findByIdAndUpdate(user._id, { password: hashed });
 
     // Invalidate the reset token — single use
-    await this.redisService.deleteVerificationToken(dto.resetToken, OTP_PURPOSE);
+    await this.redisService.deleteVerificationToken(
+      dto.resetToken,
+      OTP_PURPOSE,
+    );
 
     // Revoke all active sessions — force re-login on all devices
     await this.redisService.revokeAllRefreshTokens(user._id.toString());

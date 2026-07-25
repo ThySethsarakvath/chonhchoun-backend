@@ -1,7 +1,13 @@
+import * as dns from 'dns';
+
+// Force Node.js to use public DNS resolvers to bypass local ISP DNS SRV resolution issues
+dns.setServers(['8.8.8.8', '1.1.1.1', '8.8.4.4']);
+
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AppModule } from './app.module';
+import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
@@ -25,6 +31,18 @@ async function bootstrap() {
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
     allowedHeaders: ['Content-Type', 'Authorization'],
   });
+
+  const swaggerConfig = new DocumentBuilder()
+    .setTitle('Chonh Choun API')
+    .setDescription(
+      'The Chonh Choun Delivery & KrubKrong ERP API documentation',
+    )
+    .setVersion('1.0')
+    .addBearerAuth()
+    .build();
+
+  const swaggerDocument = SwaggerModule.createDocument(app, swaggerConfig);
+  SwaggerModule.setup('api/docs', app, swaggerDocument);
 
   const configService = app.get(ConfigService);
   const port = configService.get<number>('port') ?? 3000;

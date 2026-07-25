@@ -1,4 +1,9 @@
-import { Injectable, Inject, BadRequestException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  Inject,
+  BadRequestException,
+  Logger,
+} from '@nestjs/common';
 import { v2 as cloudinaryV2, UploadApiResponse } from 'cloudinary';
 import { CLOUDINARY } from '../../../config/cloudinary.config';
 import * as streamifier from 'streamifier';
@@ -7,12 +12,20 @@ import { Multer } from 'multer';
 // Allowed MIME types
 const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024; // 5MB
+const ALLOWED_DOCUMENT_MIME_TYPES = [
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'application/pdf',
+];
 
 @Injectable()
 export class CloudinaryService {
   private readonly logger = new Logger(CloudinaryService.name);
 
-  constructor(@Inject(CLOUDINARY) private readonly cloudinary: typeof cloudinaryV2) {}
+  constructor(
+    @Inject(CLOUDINARY) private readonly cloudinary: typeof cloudinaryV2,
+  ) {}
 
   // Upload a single image buffer to Cloudinary
   async uploadImage(
@@ -43,7 +56,10 @@ export class CloudinaryService {
         },
         (error, result?: UploadApiResponse) => {
           if (error || !result) {
-            this.logger.error('Cloudinary upload failed:', error?.message || 'No result returned');
+            this.logger.error(
+              'Cloudinary upload failed:',
+              error?.message || 'No result returned',
+            );
             return reject(new BadRequestException('Image upload failed.'));
           }
           resolve({
@@ -54,6 +70,44 @@ export class CloudinaryService {
       );
 
       // Stream the file buffer directly to Cloudinary — no temp file on disk
+      streamifier.createReadStream(file.buffer).pipe(uploadStream);
+    });
+  }
+
+  async uploadDocument(
+    file: Express.Multer.File,
+    folder: string,
+  ): Promise<{ url: string; publicId: string }> {
+    if (!ALLOWED_DOCUMENT_MIME_TYPES.includes(file.mimetype)) {
+      throw new BadRequestException(
+        'Invalid file type. Only PDF, JPEG, PNG, and WebP are allowed.',
+      );
+    }
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      throw new BadRequestException('File too large. Maximum size is 5MB.');
+    }
+
+    return new Promise((resolve, reject) => {
+      const uploadStream = this.cloudinary.uploader.upload_stream(
+        {
+          folder,
+          resource_type: file.mimetype === 'application/pdf' ? 'raw' : 'image',
+        },
+        (error, result?: UploadApiResponse) => {
+          if (error || !result) {
+            this.logger.error(
+              'Cloudinary document upload failed:',
+              error?.message || 'No result returned',
+            );
+            return reject(new BadRequestException('Document upload failed.'));
+          }
+          resolve({
+            url: result.secure_url,
+            publicId: result.public_id,
+          });
+        },
+      );
+
       streamifier.createReadStream(file.buffer).pipe(uploadStream);
     });
   }
