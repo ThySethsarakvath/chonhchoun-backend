@@ -14,6 +14,7 @@ import {
   IsArray,
   IsUrl,
   MaxLength,
+  IsIn,
 } from 'class-validator';
 import {
   PackageType,
@@ -123,6 +124,10 @@ export class PaymentDto {
 
 // ── Main booking DTO ──────────────────────────────────────────────────────────
 export class CreateBookingDto {
+  @IsOptional()
+  @IsIn(['EXPRESS', 'WAREHOUSE'])
+  serviceType?: 'EXPRESS' | 'WAREHOUSE';
+
   @IsEnum(VehicleType)
   vehicleType: VehicleType;
 

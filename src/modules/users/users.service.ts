@@ -16,6 +16,17 @@ import {
 } from '../../shared/schemas/driver-vehicle-assignment.schema';
 import { Vehicle, VehicleDocument } from '../../shared/schemas/vehicle.schema';
 
+const PHNOM_PENH_DEMO_DRIVER_LOCATIONS = [
+  { lat: 11.5696, lng: 104.8885 }, // Toul Kork
+  { lat: 11.5578, lng: 104.9214 }, // Central Phnom Penh
+  { lat: 11.5487, lng: 104.9332 }, // BKK
+  { lat: 11.5368, lng: 104.9168 }, // Russian Market
+  { lat: 11.5852, lng: 104.9084 }, // Sen Sok south
+  { lat: 11.5739, lng: 104.9534 }, // Chroy Changvar
+  { lat: 11.5238, lng: 104.9487 }, // Tonle Bassac
+  { lat: 11.5449, lng: 104.8758 }, // Stueng Mean Chey
+] as const;
+
 @Injectable()
 export class UsersService {
   constructor(
@@ -215,16 +226,39 @@ export class UsersService {
     }
 
     if (dto.isOnline !== undefined) {
+      if (
+        dto.isOnline === false &&
+        user.availabilityStatus === DriverAvailabilityStatus.ON_TRIP
+      ) {
+        throw new BadRequestException(
+          'An active delivery must be completed before going offline.',
+        );
+      }
       user.driverProfile.isOnline = dto.isOnline;
+      user.availabilityStatus = dto.isOnline
+        ? DriverAvailabilityStatus.AVAILABLE
+        : DriverAvailabilityStatus.OFFLINE;
     }
     if (dto.currentLocation !== undefined) {
       user.driverProfile.currentLocation = dto.currentLocation;
+    } else if (dto.isOnline === true) {
+      user.driverProfile.currentLocation = this.demoLocationFor(userId);
     }
 
     // Force Mongoose to mark subdocument as modified
     user.markModified('driverProfile');
     const updated = await user.save();
     return this.sanitize(updated);
+  }
+
+  private demoLocationFor(userId: string): { lat: number; lng: number } {
+    const hash = [...userId].reduce(
+      (value, character) => value + character.charCodeAt(0),
+      0,
+    );
+    return PHNOM_PENH_DEMO_DRIVER_LOCATIONS[
+      hash % PHNOM_PENH_DEMO_DRIVER_LOCATIONS.length
+    ];
   }
 
   sanitize(user: UserDocument) {
@@ -234,7 +268,9 @@ export class UsersService {
       email: user.email,
       phone: user.phone,
       role: user.role,
-      vehicleType: this.normalizeVehicleType(user.vehicleType),
+      vehicleType: this.normalizeVehicleType(
+        user.vehicleType ?? user.driverProfile?.vehicleType,
+      ),
       assignedVehicleCode: user.assignedVehicleCode ?? null,
       availabilityStatus:
         user.availabilityStatus ?? DriverAvailabilityStatus.OFFLINE,

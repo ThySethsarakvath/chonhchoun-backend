@@ -68,6 +68,16 @@ class PaymentInfo {
 }
 const PaymentInfoSchema = SchemaFactory.createForClass(PaymentInfo);
 
+@Schema({ _id: false })
+class RoutePoint {
+  @Prop({ required: true })
+  latitude: number;
+
+  @Prop({ required: true })
+  longitude: number;
+}
+const RoutePointSchema = SchemaFactory.createForClass(RoutePoint);
+
 @Schema({ timestamps: true })
 export class Package {
   @Prop({ required: true, unique: true, trim: true })
@@ -78,6 +88,9 @@ export class Package {
 
   @Prop({ required: true, enum: VehicleType })
   vehicleType: VehicleType;
+
+  @Prop({ required: true, enum: ['EXPRESS', 'WAREHOUSE'], default: 'EXPRESS' })
+  serviceType: 'EXPRESS' | 'WAREHOUSE';
 
   @Prop({ type: PackageDetailSchema, required: true })
   package: PackageDetail;
@@ -115,6 +128,72 @@ export class Package {
 
   @Prop({ type: Types.ObjectId, ref: 'User', default: null })
   driverId: Types.ObjectId | null;
+
+  @Prop({ type: [Types.ObjectId], ref: 'User', default: [] })
+  broadcastDriverIds: Types.ObjectId[];
+
+  @Prop({ type: Date, default: null })
+  broadcastedAt: Date | null;
+
+  @Prop({ type: Date, default: null })
+  broadcastExpiresAt: Date | null;
+
+  @Prop({ type: Number, default: 0, min: 0 })
+  broadcastAttempt: number;
+
+  @Prop({ type: Number, default: 8 })
+  broadcastRadiusKm: number;
+
+  @Prop({
+    type: {
+      latitude: { type: Number },
+      longitude: { type: Number },
+    },
+    default: null,
+  })
+  driverStartLocation: RoutePoint | null;
+
+  @Prop({ type: [RoutePointSchema], default: [] })
+  pickupRoutePoints: RoutePoint[];
+
+  @Prop({ type: [RoutePointSchema], default: [] })
+  deliveryRoutePoints: RoutePoint[];
+
+  @Prop({ type: Number, default: null })
+  pickupRouteDistanceMeters: number | null;
+
+  @Prop({ type: Number, default: null })
+  deliveryRouteDistanceMeters: number | null;
+
+  @Prop({ type: Number, default: null })
+  pickupRouteDurationSeconds: number | null;
+
+  @Prop({ type: Number, default: null })
+  deliveryRouteDurationSeconds: number | null;
+
+  @Prop({ type: Number, default: 30, min: 10, max: 300 })
+  simulationDurationSeconds: number;
+
+  @Prop({ type: Number, default: 0, min: 0, max: 1 })
+  simulationProgress: number;
+
+  @Prop({ type: Date, default: null })
+  simulationPhaseStartedAt: Date | null;
+
+  @Prop({ type: Date, default: null })
+  acceptedAt: Date | null;
+
+  @Prop({ type: Date, default: null })
+  arrivedAtPickupAt: Date | null;
+
+  @Prop({ type: Date, default: null })
+  pickedUpAt: Date | null;
+
+  @Prop({ type: Date, default: null })
+  arrivedAtDropoffAt: Date | null;
+
+  @Prop({ type: Date, default: null })
+  deliveredAt: Date | null;
 }
 
 export const PackageSchema = SchemaFactory.createForClass(Package);
@@ -122,3 +201,4 @@ export const PackageSchema = SchemaFactory.createForClass(Package);
 PackageSchema.index({ customerId: 1, createdAt: -1 });
 PackageSchema.index({ status: 1 });
 PackageSchema.index({ driverId: 1 });
+PackageSchema.index({ status: 1, vehicleType: 1, broadcastExpiresAt: 1 });

@@ -3,6 +3,8 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   Patch,
   Post,
@@ -19,6 +21,8 @@ import { RolesGuard } from '../auth/guards/role.guard';
 import { Roles } from '../auth/decorators/roles.decorators';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Role } from '../../common/enum/role.enum';
+import { QuoteExpressDeliveryDto } from './dto/quote-express-delivery.dto';
+import { VerifyExpressDeliveryDto } from './dto/verify-express-delivery.dto';
 
 @Controller('packages')
 @UseGuards(JwtAuthGuard) // all routes require auth
@@ -36,6 +40,13 @@ export class PackagesController {
   @UseGuards(RolesGuard)
   create(@Body() dto: CreateBookingDto, @CurrentUser() user: any) {
     return this.packagesService.create(dto, user);
+  }
+
+  @Post('quote')
+  @Roles(Role.CUSTOMER, Role.ADMIN)
+  @UseGuards(RolesGuard)
+  quote(@Body() dto: QuoteExpressDeliveryDto) {
+    return this.packagesService.quoteExpress(dto);
   }
 
   // GET /api/v1/packages/my
@@ -57,8 +68,8 @@ export class PackagesController {
   @Get('available')
   @Roles(Role.DRIVER, Role.ADMIN)
   @UseGuards(RolesGuard)
-  findAvailable() {
-    return this.packagesService.findAvailable();
+  findAvailable(@CurrentUser() user: any) {
+    return this.packagesService.findAvailable(user._id.toString());
   }
 
   // GET /api/v1/packages/:id
@@ -90,6 +101,14 @@ export class PackagesController {
     return this.packagesService.cancel(id, dto, user);
   }
 
+  @Post(':id/broadcast/retry')
+  @HttpCode(HttpStatus.OK)
+  @Roles(Role.CUSTOMER, Role.ADMIN)
+  @UseGuards(RolesGuard)
+  retryBroadcast(@Param('id') id: string, @CurrentUser() user: any) {
+    return this.packagesService.retryBroadcast(id, user);
+  }
+
   // ─────────────────────────────────────────────────────────────────────────────
   // DRIVER routes
   // ─────────────────────────────────────────────────────────────────────────────
@@ -97,7 +116,7 @@ export class PackagesController {
   // PATCH /api/v1/packages/:id/accept
   // Driver: accept delivery booking request
   @Patch(':id/accept')
-  @Roles(Role.DRIVER, Role.ADMIN, Role.CUSTOMER)
+  @Roles(Role.DRIVER)
   @UseGuards(RolesGuard)
   accept(@Param('id') id: string, @CurrentUser() user: any) {
     return this.packagesService.acceptPackage(id, user._id);
@@ -115,7 +134,7 @@ export class PackagesController {
   // PATCH /api/v1/packages/:id/status
   // Driver: update delivery status (PICKED_UP, IN_TRANSIT, DELIVERED, FAILED)
   @Patch(':id/status')
-  @Roles(Role.DRIVER, Role.ADMIN, Role.CUSTOMER)
+  @Roles(Role.DRIVER, Role.ADMIN)
   @UseGuards(RolesGuard)
   updateStatus(
     @Param('id') id: string,
@@ -123,6 +142,23 @@ export class PackagesController {
     @CurrentUser() user: any,
   ) {
     return this.packagesService.updateStatus(id, dto.status, user);
+  }
+
+  @Post(':id/simulation/sync')
+  @HttpCode(HttpStatus.OK)
+  syncSimulation(@Param('id') id: string, @CurrentUser() user: any) {
+    return this.packagesService.syncSimulation(id, user);
+  }
+
+  @Post(':id/verify')
+  @Roles(Role.DRIVER)
+  @UseGuards(RolesGuard)
+  verifyExpressDelivery(
+    @Param('id') id: string,
+    @Body() dto: VerifyExpressDeliveryDto,
+    @CurrentUser() user: any,
+  ) {
+    return this.packagesService.verifyExpressDelivery(id, dto, user);
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
